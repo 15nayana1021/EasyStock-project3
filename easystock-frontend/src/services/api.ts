@@ -155,3 +155,15 @@ export const loginUser = async (nickname: string) => {
     return { success: false };
   }
 };
+
+// 6. 호가(주문창) 데이터 조회 (GET /stocks/{ticker}/orderbook)
+export const fetchOrderBook = async (ticker: string) => {
+  try {
+    const response = await fetch(`${BASE_URL}/stocks/${ticker}/orderbook`);
+    if (!response.ok) throw new Error("Failed to fetch orderbook");
+    return await response.json();
+  } catch (error) {
+    console.error("Failed to fetch orderbook:", error);
+    return null;
+  }
+};
