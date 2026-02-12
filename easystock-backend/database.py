@@ -53,12 +53,9 @@ async def init_db():
 
         try: 
             # 혹시 quest_name으로 만들어진 경우를 대비해 quest_id로 통일하거나 별칭 처리
-            # (여기서는 일단 컬럼 추가만 확실하게 합니다)
             pass
         except: pass
-        
-        # ... (나머지 테이블 생성 코드는 그대로 두세요: holdings, orders 등) ...
-        # [기존 코드 유지]
+
         await db.execute("""
         CREATE TABLE IF NOT EXISTS holdings (
             user_id INTEGER,
@@ -107,8 +104,7 @@ async def init_db():
         )
         """)
 
-        # 2) 테이블은 있는데 컬럼이 없을 수도 있으니, 하나씩 추가를 시도합니다.
-        # (이미 있으면 에러가 나므로 try-except로 감싸서 무시합니다)
+        # 테이블은 있는데 컬럼이 없을 수도 있으니, 하나씩 추가를 시도합니다.
 
         try:
             await db.execute("ALTER TABLE news ADD COLUMN ticker TEXT")

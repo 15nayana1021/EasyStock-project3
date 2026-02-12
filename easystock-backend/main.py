@@ -73,7 +73,7 @@ async def simulate_market_background():
             if row:
                 start_price = row['current_price']
             else:
-                start_price = INITIAL_PRICES.get(ticker, 10000) # 설정 안 된 종목은 10000원
+                start_price = INITIAL_PRICES.get(ticker, 10000)
 
             if not row:
                 await db.execute("INSERT OR IGNORE INTO stocks (symbol, company_name, current_price) VALUES (?, ?, ?)", 
@@ -108,7 +108,7 @@ async def simulate_market_background():
                 spread = random.randint(-500, 500)
                 order_price = int(current_p + spread)
                 if order_price < 10: order_price = 10
-                qty = random.randint(1, 5) # 봇은 소량으로 자주 거래
+                qty = random.randint(1, 5)
 
                 bot_order = Order(
                     agent_id="Bot_Noise", ticker=ticker, side=bot_side,
@@ -133,8 +133,6 @@ async def simulate_market_background():
 
                 # 3. 멘토링 (삼성전자만 Real AI)
                 if real_ai_mode and ticker == "삼성전자" and (loop_count % 30 == 0):
-                    # ... (AI 로직 생략: 기존 코드 유지) ...
-                    # (너무 길어지니 위에서 작성하신 AI 코드가 그대로 있다고 가정합니다)
                     pass 
                 elif (loop_count % 5 == 0):
                     # 무료 멘트
@@ -143,8 +141,7 @@ async def simulate_market_background():
                         current_mentor_comments[ticker] = random.sample(comments_pool, 1)
 
             
-            # 사용자 주문 정산 (Settlement)
-            # DB에 'PENDING'으로 남아있는 주문들을 가져와서, 엔진에서 사라졌는지(체결됐는지) 확인합니다.         
+            # 사용자 주문 정산       
             async with db.execute("SELECT * FROM orders WHERE status = 'PENDING'") as cursor:
                 pending_orders = await cursor.fetchall()
 
@@ -156,8 +153,7 @@ async def simulate_market_background():
                 qty = db_order['quantity']
                 price = db_order['price']
                 
-                # 엔진에서 내 주문 찾기 (Agent ID: User_{user_id})
-                # 엔진의 오더북(호가창)을 뒤져서 내 주문이 남아있는지 봅니다.
+                # 엔진에서 내 주문 찾기
                 is_alive_in_engine = False
                 book = engine.order_books.get(target_ticker, {"BUY": [], "SELL": []})
                 
@@ -190,7 +186,7 @@ async def simulate_market_background():
                             INSERT INTO holdings (user_id, company_name, quantity, average_price)
                             VALUES (?, ?, ?, ?)
                             ON CONFLICT(user_id, company_name) DO UPDATE SET quantity = quantity + ?, average_price = ?
-                        """, (user_id, target_ticker, qty, price, qty, price)) # 평단가는 단순하게 체결가로 갱신
+                        """, (user_id, target_ticker, qty, price, qty, price))
                         
                     elif o_type == "SELL":
                         # 매도 성공: 현금 지급
@@ -305,8 +301,8 @@ async def get_stock_list():
                 "ticker": ticker,
                 "name": ticker,
                 "sector": "IT/반도체" if ticker == "삼성전자" else "벤처/스타트업",
-                "current_price": int(comp.current_price), # 실시간 가격
-                "fluctuation_rate": 0.0 # (나중에 전일 대비 계산 로직 추가 가능)
+                "current_price": int(comp.current_price),
+                "fluctuation_rate": 0.0
             })
     return result
 
@@ -350,7 +346,6 @@ async def get_my_portfolio(user_id: str = "1"):
         db.row_factory = aiosqlite.Row
         
         # 1. 먼저 '닉네임(username)'으로 유저를 찾습니다!
-        # (혹시 숫자로 들어올 경우를 대비해 id 검색도 허용하는 안전장치 추가)
         async with db.execute("SELECT id, username, balance FROM users WHERE username = ? OR id = ?", (user_id, user_id)) as cursor:
             user = await cursor.fetchone()
             
@@ -428,7 +423,7 @@ def get_hot_ranking():
         if ticker_name in engine.companies:
             current_price = int(engine.companies[ticker_name].current_price)
         else:
-            current_price = INITIAL_PRICES.get(ticker_name, 0) # 엔진에 없으면 초기값
+            current_price = INITIAL_PRICES.get(ticker_name, 0)
 
         # B. 시작 가격 가져오기 (등락률 계산용)
         initial_price = INITIAL_PRICES.get(ticker_name, current_price)
@@ -442,11 +437,11 @@ def get_hot_ranking():
         # D. 데이터 조립
         response_data.append({
             "rank": rank,
-            "ticker": ticker_name, # 프론트엔드 호환성
-            "name": ticker_name,   # 프론트엔드 호환성
+            "ticker": ticker_name,
+            "name": ticker_name,
             "score": score,
-            "current_price": current_price,      # 요청하신 현재가
-            "change_rate": round(change_rate, 2) # 요청하신 등락률
+            "current_price": current_price,
+            "change_rate": round(change_rate, 2)
         })
             
     return response_data
