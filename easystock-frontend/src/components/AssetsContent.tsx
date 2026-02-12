@@ -105,7 +105,7 @@ const AssetsContent: React.FC<AssetsContentProps> = ({ cash, portfolio }) => {
             {/* 주식 카드 */}
             <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-green-50/50 animate-in slide-in-from-bottom-2 duration-300">
               <div className="bg-gradient-to-r from-[#2D8C69] to-[#68B297] px-4 py-2 flex justify-center">
-                <span className="text-sm font-bold text-white">
+                <span className="text-sm font-bold text-gray-700">
                   주식 {stockRatio}%
                 </span>
               </div>
@@ -119,7 +119,7 @@ const AssetsContent: React.FC<AssetsContentProps> = ({ cash, portfolio }) => {
             {/* 현금 카드 */}
             <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-green-50/50 animate-in slide-in-from-bottom-4 duration-300">
               <div className="bg-gradient-to-r from-[#8DBA9C] to-[#CDE79D] px-4 py-2 flex justify-center">
-                <span className="text-sm font-bold text-white">
+                <span className="text-sm font-bold text-gray-700">
                   현금 {cashRatio}%
                 </span>
               </div>

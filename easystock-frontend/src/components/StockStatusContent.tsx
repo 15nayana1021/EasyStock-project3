@@ -29,21 +29,21 @@ interface StockStatusContentProps {
 const solutionData: SolutionItem[] = [
   {
     id: 1,
-    type: "공격형 에이전트",
+    type: "공격형 여우",
     text: "일단 지르고 보는 스타일이시네요. 지금처럼 과감한 베팅이 들어맞을 때도 있겠지만, 리스크가 큰 만큼 언제든 급락할 수도 있습니다! 신중하게 투자하세요!",
     avatarSeed: "Garrett",
     avatarType: "fox",
   },
   {
     id: 2,
-    type: "안정형 에이전트",
+    type: "안정형 여우",
     text: "투자금이 너무 많으시네요, 예진 님. 자산의 80%가 삼성전자에 몰려 있는 건 위험해요. 수익의 일부는 우량주나 현금으로 옮겨서 소중한 자산을 안전하게 지켜보아요.",
     avatarSeed: "Felix",
     avatarType: "wolf",
   },
   {
     id: 3,
-    type: "비관형 에이전트",
+    type: "비관형 여우",
     text: "지금 조금 자산을 관리를 한다해도 모릅니다. 시장 지표가 과열 상태예요. 지금 다 털고 도망치는 게 상책입니다. 자존심을 듣지 않으면 큰 코 다칠 겁니다.",
     avatarSeed: "Jasper",
     avatarType: "wolf",

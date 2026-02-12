@@ -169,17 +169,5 @@ async def init_db():
         )
         """)
 
-        # 9. 초기 데이터 (없으면 삼성전자/SK하이닉스 추가)
-        cursor = await db.execute("SELECT count(*) FROM stocks")
-        if (await cursor.fetchone())[0] == 0:
-            print("⚙️ 초기 주식 데이터 생성 중...")
-            await db.execute("INSERT INTO stocks (symbol, company_name, current_price) VALUES (?, ?, ?)", 
-                            ("삼성전자", "삼성전자", 70000))
-            await db.execute("INSERT INTO stocks (symbol, company_name, current_price) VALUES (?, ?, ?)", 
-                            ("SK하이닉스", "SK하이닉스", 120000))
-        
-        await db.commit()
-        print("✅ DB 초기화 및 WAL 모드 설정 완료!")
-
 if __name__ == "__main__":
     asyncio.run(init_db())

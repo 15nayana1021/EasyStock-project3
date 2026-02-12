@@ -20,6 +20,13 @@ from models.domain_models import Order, OrderType, OrderSide, Agent # 주문 모
 # [전역 설정]
 TARGET_TICKERS = ["삼성전자", "소현컴퍼니", "상은테크놀로지", "예진캐피탈"]
 
+INITIAL_PRICES = {
+    "삼성전자": 178500,
+    "소현컴퍼니": 60000,
+    "상은테크놀로지": 50000,
+    "예진캐피탈": 115000
+}
+
 # 🏆 [랭킹 점수판] 
 hot_scores = {ticker: 0 for ticker in TARGET_TICKERS}
 
@@ -56,13 +63,18 @@ async def simulate_market_background():
 
     try:
         
-        # [초기화] 사용자 종목 등록
+        
         for ticker in TARGET_TICKERS:
             # DB 가격 동기화
             cursor = await db.execute("SELECT * FROM stocks WHERE company_name = ?", (ticker,))
             row = await cursor.fetchone()
-            start_price = row['current_price'] if row else 70000
             
+            
+            if row:
+                start_price = row['current_price']
+            else:
+                start_price = INITIAL_PRICES.get(ticker, 10000) # 설정 안 된 종목은 10000원
+
             if not row:
                 await db.execute("INSERT OR IGNORE INTO stocks (symbol, company_name, current_price) VALUES (?, ?, ?)", 
                                     (ticker, ticker, start_price))
@@ -403,17 +415,41 @@ async def get_stock_detail(ticker: str):
     }
 
 @app.get("/api/ranking/hot")
-async def get_hot_ranking():
-    """
-    실시간 인기 종목 랭킹 (조회수 + 거래량 합산)
-    """
-    # 점수 높은 순서대로 정렬 (내림차순)
-    sorted_stocks = sorted(hot_scores.items(), key=lambda item: item[1], reverse=True)
+def get_hot_ranking():
+    # 1. 랭킹 점수판(hot_scores)을 점수 높은 순으로 정렬
+    sorted_ranking = sorted(hot_scores.items(), key=lambda x: x[1], reverse=True)[:5]
+
+    response_data = []
     
-    return [
-        {"rank": i+1, "ticker": ticker, "score": score}
-        for i, (ticker, score) in enumerate(sorted_stocks)
-    ]
+    # enumerate(..., 1)을 써서 1위부터 순위를 매깁니다.
+    for rank, (ticker_name, score) in enumerate(sorted_ranking, 1):
+        
+        # A. 실시간 현재가 가져오기 (엔진에서 조회)
+        if ticker_name in engine.companies:
+            current_price = int(engine.companies[ticker_name].current_price)
+        else:
+            current_price = INITIAL_PRICES.get(ticker_name, 0) # 엔진에 없으면 초기값
+
+        # B. 시작 가격 가져오기 (등락률 계산용)
+        initial_price = INITIAL_PRICES.get(ticker_name, current_price)
+
+        # C. 등락률(Change Rate) 계산
+        if initial_price == 0:
+            change_rate = 0.0
+        else:
+            change_rate = ((current_price - initial_price) / initial_price) * 100
+        
+        # D. 데이터 조립
+        response_data.append({
+            "rank": rank,
+            "ticker": ticker_name, # 프론트엔드 호환성
+            "name": ticker_name,   # 프론트엔드 호환성
+            "score": score,
+            "current_price": current_price,      # 요청하신 현재가
+            "change_rate": round(change_rate, 2) # 요청하신 등락률
+        })
+            
+    return response_data
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 

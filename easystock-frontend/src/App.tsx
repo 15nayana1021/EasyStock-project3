@@ -14,7 +14,6 @@ import BottomNav from "./components/BottomNav";
 import LoginModal from "./components/LoginModal";
 
 // --- 페이지/콘텐츠 임포트 ---
-import HomeContent from "./components/HomeContent";
 import PopularStocks from "./components/PopularStocks";
 import NewsContent from "./components/NewsContent";
 import CommunityContent from "./components/CommunityContent";
@@ -35,7 +34,12 @@ import {
   WatchlistItem,
 } from "./types";
 import { initialWatchlist } from "./data/mockData";
-import { fetchMyPortfolio, placeOrder, loginUser } from "./services/api";
+import {
+  fetchMyPortfolio,
+  placeOrder,
+  loginUser,
+  fetchCompanies,
+} from "./services/api";
 
 // 1. Layout 컴포넌트 (기존 디자인 유지)
 const Layout = ({
@@ -50,7 +54,6 @@ const Layout = ({
   onMarkAsRead: () => void;
 }) => {
   const location = useLocation();
-  // 프로필을 보여줄 경로들 정의
   const isHome = [
     "/",
     "/assets",
@@ -61,27 +64,35 @@ const Layout = ({
   ].includes(location.pathname);
 
   return (
+    // [개선 1] h-screen으로 높이 고정 및 overflow-hidden으로 넘치는 부분 숨김
     <div className="flex flex-col h-screen max-w-md mx-auto bg-[#F4F8F6] relative overflow-hidden shadow-2xl font-['Pretendard']">
       {!hideHeader && (
-        <>
+        // [개선 2] shrink-0 추가: 화면이 좁아져도 헤더가 찌그러지지 않음
+        <div className="shrink-0">
           <Header
             showProfile={isHome}
             notifications={notifications}
             onMarkAsRead={onMarkAsRead}
           />
+          {/* 구분선 디자인 개선 */}
           <div className="mx-4 h-[1px] bg-black/5"></div>
-        </>
+        </div>
       )}
 
+      {/* [개선 3] 메인 콘텐츠 영역: flex-1로 남은 공간을 모두 차지 + relative 추가 */}
       <div
-        className={`flex flex-1 overflow-hidden ${hideHeader ? "p-0" : "px-4 pt-4"}`}
+        className={`flex flex-1 overflow-hidden relative ${hideHeader ? "p-0" : "px-4 pt-4"}`}
       >
         {children ? (
-          children
+          // [개선 4] 자식 요소(전체화면 페이지)도 높이 100% 사용하도록 강제
+          <div className="w-full h-full overflow-hidden flex flex-col">
+            {children}
+          </div>
         ) : (
           <>
             {isHome && (
-              <div className="w-16 mr-3 flex flex-col h-full">
+              // [개선 5] 사이드바도 찌그러지지 않게 shrink-0 추가
+              <div className="w-16 mr-3 flex flex-col h-full shrink-0">
                 <Sidebar />
               </div>
             )}
@@ -92,7 +103,10 @@ const Layout = ({
         )}
       </div>
 
-      <BottomNav />
+      {/* [개선 6] 하단 내비게이션 바 고정 (찌그러짐 방지) 및 위쪽 테두리 추가 */}
+      <div className="shrink-0 border-t border-black/5">
+        <BottomNav />
+      </div>
     </div>
   );
 };
@@ -108,6 +122,7 @@ const App: React.FC = () => {
   const [transactions, setTransactions] = useState<TransactionItem[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>(initialWatchlist);
+  const [stocks, setStocks] = useState<StockData[]>([]);
 
   // 로그인 핸들러
   const handleLogin = async (nickname: string) => {
@@ -228,6 +243,21 @@ const App: React.FC = () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
   };
 
+  useEffect(() => {
+    const loadStocks = async () => {
+      try {
+        const data = await fetchCompanies();
+        setStocks(data);
+      } catch (error) {
+        console.error("Failed to load stocks:", error);
+      }
+    };
+
+    loadStocks();
+    const interval = setInterval(loadStocks, 5000); // 5초마다 주가 갱신
+    return () => clearInterval(interval);
+  }, []);
+
   // 3. 화면 렌더링
 
   // 닉네임이 없으면 로그인 모달을 보여줍니다.
@@ -248,8 +278,8 @@ const App: React.FC = () => {
             />
           }
         >
-          {/* 홈 화면: HomeContent 사용 */}
-          <Route path="/" element={<HomeContent />} />
+          {/* 홈 화면:  사용 */}
+          <Route path="/" element={<PopularStocks />} />
           <Route
             path="/assets"
             element={<AssetsContent cash={cash} portfolio={portfolio} />}
@@ -263,6 +293,7 @@ const App: React.FC = () => {
             path="/market"
             element={
               <MarketContent
+                stocks={stocks}
                 watchlist={watchlist}
                 onToggleWatchlist={handleToggleWatchlist}
                 onBuy={handleBuy}
