@@ -23,11 +23,9 @@ def fix_database_schema():
 
     for col_name, col_type in new_columns:
         try:
-            # 컬럼 추가 시도
             cursor.execute(f"ALTER TABLE news ADD COLUMN {col_name} {col_type}")
             print(f"✅ [성공] '{col_name}' 컬럼이 추가되었습니다.")
         except Exception as e:
-            # 이미 있으면 에러가 나므로 건너뜀
             if "duplicate column name" in str(e):
                 print(f"ℹ️ [패스] '{col_name}' 컬럼은 이미 존재합니다.")
             else:

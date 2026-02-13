@@ -47,11 +47,19 @@ const Layout = ({
   hideHeader = false,
   notifications,
   onMarkAsRead,
+  nickname,
+  level,
+  cash,
+  portfolio,
 }: {
   children?: React.ReactNode;
   hideHeader?: boolean;
   notifications: NotificationItem[];
   onMarkAsRead: () => void;
+  nickname?: string;
+  level?: number;
+  cash?: number;
+  portfolio?: PortfolioItem[];
 }) => {
   const location = useLocation();
   const isHome = [
@@ -64,36 +72,32 @@ const Layout = ({
   ].includes(location.pathname);
 
   return (
-    // [개선 1] h-screen으로 높이 고정 및 overflow-hidden으로 넘치는 부분 숨김
     <div className="flex flex-col h-screen max-w-md mx-auto bg-[#F4F8F6] relative overflow-hidden shadow-2xl font-['Pretendard']">
       {!hideHeader && (
-        // [개선 2] shrink-0 추가: 화면이 좁아져도 헤더가 찌그러지지 않음
         <div className="shrink-0">
           <Header
             showProfile={isHome}
             notifications={notifications}
             onMarkAsRead={onMarkAsRead}
+            nickname={nickname}
+            level={level}
           />
-          {/* 구분선 디자인 개선 */}
           <div className="mx-4 h-[1px] bg-black/5"></div>
         </div>
       )}
 
-      {/* [개선 3] 메인 콘텐츠 영역: flex-1로 남은 공간을 모두 차지 + relative 추가 */}
       <div
         className={`flex flex-1 overflow-hidden relative ${hideHeader ? "p-0" : "px-4 pt-4"}`}
       >
         {children ? (
-          // [개선 4] 자식 요소(전체화면 페이지)도 높이 100% 사용하도록 강제
           <div className="w-full h-full overflow-hidden flex flex-col">
             {children}
           </div>
         ) : (
           <>
             {isHome && (
-              // [개선 5] 사이드바도 찌그러지지 않게 shrink-0 추가
               <div className="w-16 mr-3 flex flex-col h-full shrink-0">
-                <Sidebar />
+                <Sidebar cash={cash} portfolio={portfolio} />
               </div>
             )}
             <div className="flex-1 h-full overflow-hidden">
@@ -102,8 +106,6 @@ const Layout = ({
           </>
         )}
       </div>
-
-      {/* [개선 6] 하단 내비게이션 바 고정 (찌그러짐 방지) 및 위쪽 테두리 추가 */}
       <div className="shrink-0 border-t border-black/5">
         <BottomNav />
       </div>
@@ -113,7 +115,6 @@ const Layout = ({
 
 // 2. App 컴포넌트 (메인 로직)
 const App: React.FC = () => {
-  // 상태 관리 (State)
   const [userId, setUserId] = useState<string | null>(
     localStorage.getItem("stocky_user_id"),
   );
@@ -123,6 +124,7 @@ const App: React.FC = () => {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>(initialWatchlist);
   const [stocks, setStocks] = useState<StockData[]>([]);
+  const [level, setLevel] = useState<number>(1);
 
   // 로그인 핸들러
   const handleLogin = async (nickname: string) => {
@@ -135,35 +137,32 @@ const App: React.FC = () => {
   };
 
   // 데이터 로딩 (useEffect)
+  const loadData = async () => {
+    if (!userId) return;
+    const data = await fetchMyPortfolio(userId);
+    if (data && data.portfolio) {
+      const mappedPortfolio = data.portfolio.map((item: any) => ({
+        ...item,
+        name: item.ticker,
+        price:
+          typeof item.current_price === "number"
+            ? `${item.current_price.toLocaleString()}원`
+            : item.price || "0원",
+        sharesCount: item.quantity,
+        shares: `${item.quantity}주`,
+        isUp: item.profit_rate >= 0,
+      }));
+      setCash(data.cash_balance);
+      setPortfolio(mappedPortfolio);
+    }
+  };
+
+  // 2. useEffect는 이제 loadData를 호출만 합니다.
   useEffect(() => {
-    if (!userId) return; // 닉네임이 없으면 실행하지 않음
-
-    const loadData = async () => {
-      const data = await fetchMyPortfolio(userId);
-      if (data && data.portfolio) {
-        // 백엔드 데이터를 프론트엔드 형식으로 변환
-        const mappedPortfolio = data.portfolio.map((item: any) => ({
-          ...item,
-          name: item.ticker,
-          price:
-            typeof item.current_price === "number"
-              ? `${item.current_price.toLocaleString()}원`
-              : item.price || "0원",
-          sharesCount: item.quantity,
-          shares: `${item.quantity}주`,
-          badge: "실전",
-          color: "bg-[#5B89F7]",
-          logoText: item.ticker.charAt(0),
-          isUp: item.profit_rate >= 0,
-        }));
-        setCash(data.cash_balance);
-        setPortfolio(mappedPortfolio);
-      }
-    };
-
-    loadData(); // 최초 실행
-    const interval = setInterval(loadData, 3000); // 3초마다 갱신
-    return () => clearInterval(interval); // 컴포넌트 언마운트 시 정리
+    if (!userId) return;
+    loadData();
+    const interval = setInterval(loadData, 3000);
+    return () => clearInterval(interval);
   }, [userId]);
 
   // 거래 핸들러 (매수/매도)
@@ -254,35 +253,63 @@ const App: React.FC = () => {
     };
 
     loadStocks();
-    const interval = setInterval(loadStocks, 5000); // 5초마다 주가 갱신
+    const interval = setInterval(loadStocks, 5000);
     return () => clearInterval(interval);
   }, []);
 
-  // 3. 화면 렌더링
+  const livePortfolio = portfolio.map((item) => {
+    const normalizedName = item.name === "삼성전자" ? "삼송전자" : item.name;
+
+    const liveStock = stocks.find(
+      (s) => s.name === normalizedName || s.symbol === normalizedName,
+    );
+
+    if (liveStock) {
+      const currentPriceNum =
+        typeof liveStock.price === "number"
+          ? liveStock.price
+          : Number(liveStock.price.toString().replace(/[^0-9-]/g, ""));
+
+      return {
+        ...item,
+        current_price: currentPriceNum,
+      };
+    }
+    return item;
+  });
 
   // 닉네임이 없으면 로그인 모달을 보여줍니다.
   if (!userId) {
     return <LoginModal onLogin={handleLogin} />;
   }
 
-  // 닉네임이 있으면 라우터를 실행합니다.
+  // 닉네임이 있으면 라우터를 실행합니다. (여기서부터 끝까지 복사해서 덮어쓰세요)
   return (
     <Router>
       <Routes>
-        {/* 공통 레이아웃이 적용되는 페이지들 */}
         <Route
           element={
             <Layout
               notifications={notifications}
               onMarkAsRead={handleMarkNotificationsAsRead}
+              nickname={userId || "투자자"}
+              level={level}
+              cash={cash}
+              portfolio={livePortfolio}
             />
           }
         >
-          {/* 홈 화면:  사용 */}
           <Route path="/" element={<PopularStocks />} />
+
           <Route
             path="/assets"
-            element={<AssetsContent cash={cash} portfolio={portfolio} />}
+            element={
+              <AssetsContent
+                cash={cash}
+                portfolio={livePortfolio}
+                refreshData={loadData}
+              />
+            }
           />
           <Route path="/news" element={<NewsContent />} />
           <Route path="/ranking" element={<RankingContent />} />
@@ -309,7 +336,7 @@ const App: React.FC = () => {
                 watchlist={watchlist}
                 onToggleWatchlist={handleToggleWatchlist}
                 cash={cash}
-                portfolio={portfolio}
+                portfolio={livePortfolio}
                 transactions={transactions}
                 onBuy={handleBuy}
                 onSell={handleSell}
@@ -318,7 +345,6 @@ const App: React.FC = () => {
           />
         </Route>
 
-        {/* 전체 화면 페이지들 (헤더 숨김) */}
         <Route
           path="/chatbot"
           element={

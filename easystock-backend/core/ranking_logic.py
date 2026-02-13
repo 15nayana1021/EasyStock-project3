@@ -51,7 +51,7 @@ def update_ranking_snapshot():
         temp_ranking.sort(key=lambda x: x[2], reverse=True)
 
         # 4. DB 갱신 (기존 랭킹 지우고 새로 쓰기)
-        cursor.execute("DELETE FROM ranking_snapshot") # 기존 데이터 삭제
+        cursor.execute("DELETE FROM ranking_snapshot")
         
         for rank, data in enumerate(temp_ranking):
             cursor.execute("""

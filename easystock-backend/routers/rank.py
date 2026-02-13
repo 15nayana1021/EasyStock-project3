@@ -7,7 +7,6 @@ router = APIRouter(prefix="/api/rank", tags=["Ranking"])
 # routers/rank.py (스냅샷 읽기 모드)
 @router.get("/top")
 async def get_top_ranking(db: aiosqlite.Connection = Depends(get_db_connection)):
-    # 계산 로직 없이 DB만 읽어서 반환!
     cursor = await db.execute("""
         SELECT rank, user_id, username, total_asset, profit_rate 
         FROM ranking_snapshot 
@@ -44,12 +43,11 @@ async def get_top_ranking(db: aiosqlite.Connection = Depends(get_db_connection))
         total_asset = cash + stock_assets
         
         # 수익률 계산 (원금 100만원 가정)
-        # 나중에는 가입 시 초기 자본금을 DB에 저장해서 정확히 계산해야 함
         initial_capital = 1000000 
         profit_rate = ((total_asset - initial_capital) / initial_capital) * 100
 
         ranking_list.append({
-            "rank": 0, # 나중에 채움
+            "rank": 0,
             "user_id": user_id,
             "username": username,
             "total_asset": int(total_asset),

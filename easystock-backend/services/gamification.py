@@ -15,7 +15,7 @@ LEVEL_TABLE = {
     5: 300
 }
 
-# db 파라미터 추가! (기존 연결을 재사용하기 위함)
+# db 파라미터 추가
 async def gain_exp(user_id: int, amount: int, max_level: int = None, db: aiosqlite.Connection = None):
     """
     유저에게 경험치를 지급하고, 레벨업을 체크합니다.
@@ -27,7 +27,7 @@ async def gain_exp(user_id: int, amount: int, max_level: int = None, db: aiosqli
         # 1. 외부에서 DB 연결을 안 줬으면 -> 새로 만든다.
         if db is None:
             db = await aiosqlite.connect(DB_PATH)
-            should_close_db = True # 내가 만들었으니 내가 닫아야 함
+            should_close_db = True
 
         # 2. 현재 정보 가져오기
         cursor = await db.execute("SELECT level, exp FROM users WHERE id = ?", (user_id,))
@@ -38,7 +38,7 @@ async def gain_exp(user_id: int, amount: int, max_level: int = None, db: aiosqli
         
         current_level, current_exp = row
 
-        # (제한 레벨 확인)
+        # 제한 레벨 확인
         if max_level is not None and current_level >= max_level:
             return
 
@@ -68,7 +68,6 @@ async def gain_exp(user_id: int, amount: int, max_level: int = None, db: aiosqli
     except Exception as e:
         print(f"❌ gain_exp 에러: {e}")
     finally:
-        # 내가 새로 만든 연결일 때만 닫는다. (받아온 거면 닫지 않음!)
         if should_close_db and db:
             await db.close()
 

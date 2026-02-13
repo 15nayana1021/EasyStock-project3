@@ -1,153 +1,177 @@
 import os
-import json
 import time
+import json
 from dotenv import load_dotenv
-from azure.ai.projects import AIProjectClient
-from azure.identity import DefaultAzureCredential
+from openai import AzureOpenAI
 from json_repair import repair_json
 
 load_dotenv()
 
 class StockAgentService:
     def __init__(self, mode="real"):
-        # 1. 공통 설정 로드
-        self.conn_str = os.getenv("PROJECT_CONNECTION_STRING")
+        self.endpoint = os.getenv("AZURE_AI_ENDPOINT")
+        self.api_key = os.getenv("AZURE_AI_API_KEY") 
+        self.mode = mode
         
-        # 2. 모드에 따른 에이전트 ID 설정
         if mode == "virtual":
             self.agent_id = os.getenv("VIRTUAL_AGENT_ID")
+            self.model_name = "gpt-4o-mini"
             print(f"🤖 가상 뉴스 생성 모드 (4o-mini) 활성화")
         else:
             self.agent_id = os.getenv("REAL_AGENT_ID")
+            self.model_name = "gpt-4o"
             print(f"📡 실제 뉴스 분석 모드 (4o) 활성화")
 
-        # 3. 클라이언트 초기화 (한 번만 수행하여 효율성 높임)
-        self.project_client = AIProjectClient.from_connection_string(
-            conn_str=self.conn_str,
-            credential=DefaultAzureCredential()
-        )
+        if not self.endpoint or not self.api_key:
+            print("❌ 오류: .env 설정이 부족합니다.")
+            self.client = None
+            return
+
+        try:
+            self.client = AzureOpenAI(
+                azure_endpoint=self.endpoint,
+                api_key=self.api_key,
+                api_version="2024-05-01-preview"
+            )
+            
+            # 에이전트 유효성 검사 및 자동 생성
+            self._ensure_agent_exists()
+            
+        except Exception as e:
+            print(f"❌ 클라이언트 초기화 실패: {e}")
+            self.client = None
+
+    def _ensure_agent_exists(self):
+        """에이전트 ID가 유효한지 확인하고, 없으면 새로 만듭니다."""
+        if not self.client: return
+
+        try:
+            # 1. 기존 ID로 조회를 시도해봅니다.
+            self.client.beta.assistants.retrieve(self.agent_id)
+        except Exception:
+            print(f"⚠️ 기존 에이전트({self.agent_id})를 찾을 수 없습니다.")
+            print("✨ 새로운 에이전트를 자동으로 생성합니다...")
+            
+            try:
+                # 2. 없으면 새로 만듭니다.
+                instructions = "당신은 주식 뉴스 분석 및 생성 전문가입니다. 항상 JSON 형식으로 응답합니다."
+                new_agent = self.client.beta.assistants.create(
+                    name=f"StockAgent-{self.mode}",
+                    instructions=instructions,
+                    model=self.model_name 
+                )
+                # 3. 새로 만든 ID를 현재 실행 메모리에 적용합니다.
+                self.agent_id = new_agent.id
+                print(f"✅ 새 에이전트 생성 완료! ID: {self.agent_id}")
+                print(f"📝 (참고) .env 파일의 {self.mode.upper()}_AGENT_ID를 이 값으로 바꿔주시면 재사용 가능합니다.")
+            except Exception as e:
+                print(f"❌ 에이전트 생성 실패: {e}")
 
     def _call_llm(self, prompt: str) -> str:
-        try:
-            # 1. 스레드(대화방) 생성
-            thread = self.project_client.agents.create_thread()
+        if not self.client: return ""
 
-            # 2. 사용자 질문 등록 (메시지 전송)
-            self.project_client.agents.create_message(
+        try:
+            thread = self.client.beta.threads.create()
+            self.client.beta.threads.messages.create(
                 thread_id=thread.id,
                 role="user",
-                content=prompt,
+                content=prompt
             )
 
-            # 3. 에이전트 실행 (Run) 및 완료 대기
-            # create_and_process_run은 실행 후 완료될 때까지 기다려줍니다.
-            run = self.project_client.agents.create_and_process_run(
+            run = self.client.beta.threads.runs.create(
                 thread_id=thread.id,
-                assistant_id=self.agent_id,
+                assistant_id=self.agent_id
             )
 
-            # 4. 실행 결과 확인 및 응답 가져오기
-            if run.status == "completed":
-                # 대화 내역 가져오기 (최신 메시지가 맨 앞에 옴)
-                messages = self.project_client.agents.list_messages(thread_id=thread.id)
-                
-                # 가장 최근의 에이전트 응답 찾기
+            # 대기 루프
+            while run.status in ['queued', 'in_progress', 'cancelling']:
+                time.sleep(1)
+                run = self.client.beta.threads.runs.retrieve(
+                    thread_id=thread.id,
+                    run_id=run.id
+                )
+
+            if run.status == 'completed':
+                messages = self.client.beta.threads.messages.list(thread_id=thread.id)
                 for msg in messages.data:
                     if msg.role == "assistant":
-                        # 텍스트 내용 반환
-                        return msg.content[0].text.value
-            
-            return "" # 실패하거나 응답이 없으면 빈 문자열
+                        if msg.content:
+                            return msg.content[0].text.value
+            else:
+                print(f"⚠️ 에이전트 응답 실패 상태: {run.status}")
+                if hasattr(run, 'last_error') and run.last_error:
+                    print(f"   -> 원인: {run.last_error}")
+                return ""
+            return ""
 
         except Exception as e:
             print(f"❌ Azure Agent 호출 중 오류 발생: {e}")
             return ""
 
     def analyze_stock_news(self, company_name: str, mode="real", count=2):
-        # 1. 모드에 따른 프롬프트 생성
         if mode == "virtual":
             system_prompt = f"""
-            당신은 주식 시장의 베테랑 기자입니다. '{company_name}'에 대한 가상의 호재 또는 악재 뉴스 {count}개를 생성하세요.
-            
-            반드시 아래와 같은 JSON 리스트 포맷으로 응답해야 합니다.
+            당신은 냉철한 주식 전문 기자입니다. '{company_name}'에 대한 가상 뉴스를 생성하되, 다음 규칙을 엄격히 지키세요.
+
+            [규칙 1: 현실적인 감성 분배]
+            - 모든 뉴스가 긍정적일 수는 없습니다. 50%의 확률로 'negative' 뉴스를 생성하세요.
+            - 악재 예시: 횡령, 실적 쇼크, 소송, 제품 결함, 규제 위반, 공급망 붕괴 등.
+
+            [규칙 2: 점수(Impact Score)의 다양화]
+            - 점수를 10점에서 95점 사이로 넓게 쓰세요.
+            - 단순 협약이나 일상적인 기사는 30~50점.
+            - 기업의 근간을 흔드는 초대형 호재/악재는 80~95점.
+            - 어정쩡하게 80점만 주지 마세요.
+
+            [규칙 3: 구체적인 본문]
+            - 본문은 3문단 이상으로, 실제 기사처럼 수치와 정황을 가상으로 만들어 넣으세요.
+
+            반드시 이 JSON 포맷으로만 응답하세요:
             [
                 {{
-                    "title": "자극적인 뉴스 헤드라인",
-                    "content": "기사 전문 (최소 3문단)",
-                    "summary": "1~2줄 핵심 요약",
-                    "sentiment": "positive 또는 negative",  
-                    "impact_score": 1에서 100 사이의 정수 (DB 컬럼명과 일치시킴!)
+                    "title": "헤드라인",
+                    "content": "본문",
+                    "summary": "요약",
+                    "sentiment": "positive 또는 negative",
+                    "impact_score": (내용에 맞는 10~95 사이의 숫자)
                 }}
             ]
             """
         else: 
-            system_prompt = f"""
-            당신은 금융 뉴스 분석가입니다. '{company_name}'에 대한 최신 주식 뉴스를 검색하고, 가장 중요한 {count}개의 뉴스만 선정하여 분석하세요.
-            
-            반드시 아래와 같은 JSON 리스트 포맷으로 응답해야 합니다.
-            [
-                {{
-                    "title": "뉴스 제목",
-                    "content": "상세 리포트 전문",
-                    "summary": "핵심 요약",
-                    "sentiment": "positive, negative, neutral 중 하나",
-                    "impact_score": 1에서 100 사이의 정수 (DB 컬럼명과 일치시킴!)
-                }}
-            ]
-            """
+            system_prompt = f"'{company_name}' 뉴스 {count}개를 분석하여 위 JSON 포맷으로 응답하세요."
 
-        # 2. LLM에게 질문 (사용자님의 기존 LLM 호출 코드)
-        # 예: response_text = self.llm.ask(system_prompt) 또는 client.chat.completions.create(...)
-        # 아래는 예시입니다. 실제 사용하시는 LLM 호출 코드를 넣으세요.
-        print(f"🤖 {company_name} 뉴스 생성 요청 중...")
-        response_text = self._call_llm(system_prompt) # <-- 여기! 실제 LLM 호출 메서드
+        #print(f"🤖 {company_name} 뉴스 생성 요청 중...")
+        response_text = self._call_llm(system_prompt)
 
         if not response_text:
-            print(f"❌ {company_name}: LLM 응답이 없습니다. (로그인 만료 가능성)")
-            return []  # 빈 리스트 반환하고 끝냄
+            return []
 
-        # 3. JSON 파싱 (json_repair 사용)
-        # 마크다운(```json) 제거나 따옴표 오류 등을 알아서 복구해줍니다.
         try:
-            print("🧹 JSON 데이터 청소 및 파싱 중...")
             news_data = repair_json(response_text, return_objects=True)
-            
-            # 만약 결과가 리스트가 아니라 딕셔너리 하나만 왔을 경우 리스트로 감싸기
             if isinstance(news_data, dict):
                 news_data = [news_data]
-                
             return news_data
-            
-        except Exception as e:
-            print(f"❌ JSON 파싱 실패: {e}")
-            # 실패 시 빈 리스트 반환하여 서버가 죽지 않게 함
+        except Exception:
             return []
-            
-        # 2. AI 에이전트 호출 (이 부분은 기존 코드와 동일하게 유지)
-        thread = self.project_client.agents.create_thread()
         
-        self.project_client.agents.create_message(
-            thread_id=thread.id,
-            role="user",
-            content=system_prompt
-        )
 
-        run = self.project_client.agents.create_run(thread_id=thread.id, assistant_id=self.agent_id)
-        
-        while run.status in ["queued", "in_progress"]:
-            time.sleep(1)
-            run = self.project_client.agents.get_run(thread_id=thread.id, run_id=run.id)
-
-        if run.status == "completed":
-            messages = self.project_client.agents.list_messages(thread_id=thread.id)
-            last_msg = messages.data[0].content[0].text.value
-            
-            try:
-                # JSON 파싱 (마크다운 기호 ```json 제거)
-                clean_json = last_msg.replace("```json", "").replace("```", "").strip()
-                return json.loads(clean_json)
-            except Exception as e:
-                print(f"⚠️ JSON 파싱 에러: {e}")
-                return [{"error": "JSON 파싱 실패", "raw": last_msg}]
-        else:
-            return [{"error": f"분석 실패: {run.status}"}]
+if __name__ == "__main__":
+    from dotenv import load_dotenv
+    load_dotenv()
+    
+    agent_service = StockAgentService()
+    # 이 API 키와 엔드포인트로 접근 가능한 모든 에이전트 가져오기
+    assistants = agent_service.client.beta.assistants.list()
+    
+    print("\n" + "="*50)
+    print("🔍 현재 연결된 리소스에서 발견된 모든 에이전트")
+    print("="*50)
+    
+    if not assistants.data:
+        print("❌ 발견된 에이전트가 하나도 없습니다. API 키나 엔드포인트를 확인하세요.")
+    else:
+        for asst in assistants.data:
+            print(f"📌 이름: {asst.name}")
+            print(f"🆔 ID: {asst.id}")
+            print(f"📝 지침: {asst.instructions[:60]}...")
+            print("-" * 50)

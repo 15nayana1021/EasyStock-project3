@@ -60,7 +60,7 @@ async def agent_society_think(agent_name, agent_state: AgentState, market_news, 
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            temperature=0.8, # 감정적인 변화를 위해 약간 높게 설정
+            temperature=0.8,
             response_format={"type": "json_object"},
             max_tokens=150
         )
@@ -82,13 +82,12 @@ async def mentor_brain_think(mentors, ticker, news, current_price, cash):
     mentors_context = ""
     
     for role_key, persona in mentors.items():
-        # Pydantic 객체나 딕셔너리에서 정보 추출
         try:
             if hasattr(persona, 'model_dump'): data = persona.model_dump()
             elif hasattr(persona, 'dict'): data = persona.dict()
             else: data = persona.__dict__
         except:
-            continue # 변환 안 되면 패스
+            continue
 
         name = data.get("name", "익명 멘토")
         tone = data.get("tone", "평범함")
@@ -143,7 +142,6 @@ async def mentor_brain_think(mentors, ticker, news, current_price, cash):
         content = response.choices[0].message.content
         data = json.loads(content)
         
-        # 결과가 {"mentors": [...]} 형태든 [...] 형태든 처리
         if isinstance(data, list): return data
         elif "mentors" in data: return data["mentors"]
         else: return list(data.values())[0]

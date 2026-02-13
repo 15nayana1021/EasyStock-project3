@@ -15,8 +15,8 @@ class UserCreate(BaseModel):
 class TradeRequest(BaseModel):
     user_id: int
     company_name: str
-    price: float  # 1주당 현재 가격
-    quantity: int # 사고 팔 개수 (매수는 양수)
+    price: float
+    quantity: int
 
 # 2. 지갑 생성 및 초기 자금 지급 API (가입)
 @router.post("/user/init")
@@ -30,7 +30,7 @@ async def init_user(user: UserCreate, db: aiosqlite.Connection = Depends(get_db_
             "INSERT INTO users (username, balance) VALUES (?, 1000000)", 
             (user.username,)
         )
-        await db.commit()  # 저장을 먼저 해야 ID가 생깁니다.
+        await db.commit()
         
         # 2. 방금 만든 유저의 ID 확인 (RETURNING 대신 lastrowid 사용)
         user_id = cursor.lastrowid
@@ -42,7 +42,7 @@ async def init_user(user: UserCreate, db: aiosqlite.Connection = Depends(get_db_
             VALUES (?, 'DEPOSIT', 1000000, 1000000, '신규 가입 축하금')
         """, (user_id,))
         
-        await db.commit() # 최종 저장
+        await db.commit()
         
         return {
             "status": "created", 
@@ -73,7 +73,7 @@ async def buy_stock(trade: TradeRequest, db: aiosqlite.Connection = Depends(get_
     total_cost = trade.price * trade.quantity
     
     try:
-        # 🔒 트랜잭션 시작
+        # 트랜잭션 시작
         await db.execute("BEGIN IMMEDIATE") 
         
         # 1. 잔액 확인
@@ -107,20 +107,16 @@ async def buy_stock(trade: TradeRequest, db: aiosqlite.Connection = Depends(get_
             await db.execute("INSERT INTO holdings (user_id, company_name, quantity, average_price) VALUES (?, ?, ?, ?)", (trade.user_id, trade.company_name, trade.quantity, trade.price))
 
         await db.commit()
-        try:
-            # 1. 경험치 지급 (20점, 레벨 제한 없음)
-            #await gain_exp(trade.user_id, 20)
-            
+        try:   
             # 2. '첫 주식 매수' 퀘스트 체크
             await check_quest(trade.user_id, "trade_first")
         except Exception as e:
-            # 보상 지급 중 에러가 나도, 주식 산 건 취소되면 안 되니까 로그만 찍고 넘어감
             print(f"⚠️ 보상 지급 중 에러 발생: {e}")
 
         return {"message": "매수 체결 완료!", "balance": new_balance}
 
     except Exception as e:
-        await db.rollback() # 에러 나면 주식 사기 전으로 되돌림
+        await db.rollback()
         raise e
 
         # 4. 거래 원장(Ledger) 기록
@@ -129,7 +125,7 @@ async def buy_stock(trade: TradeRequest, db: aiosqlite.Connection = Depends(get_
             VALUES (?, 'BUY', ?, ?, ?)
         """, (trade.user_id, -total_cost, new_balance, f"{trade.company_name} {trade.quantity}주 매수"))
         
-        # ✅ 승인 (Commit)
+        # 승인 (Commit)
         await db.commit()
         
         return {
@@ -140,7 +136,6 @@ async def buy_stock(trade: TradeRequest, db: aiosqlite.Connection = Depends(get_
         }
 
     except Exception as e:
-        # ❌ 에러 발생 시 취소 (Rollback)
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"거래 실패: {str(e)}")
 
@@ -173,11 +168,10 @@ async def get_user_info(user_id: int, db: aiosqlite.Connection = Depends(get_db_
     }
 
 # 5. 보상 지급 API (퀘스트, 배당금 등)
-# 보상 요청 데이터 모델
 class RewardRequest(BaseModel):
     user_id: int
-    amount: float   # 받을 금액 (예: 50000)
-    description: str # 보상 이유 (예: "일일 퀘스트 완료", "출석 보상")
+    amount: float
+    description: str
 
 @router.post("/reward")
 async def give_reward(reward: RewardRequest, db: aiosqlite.Connection = Depends(get_db_connection)):
@@ -188,7 +182,7 @@ async def give_reward(reward: RewardRequest, db: aiosqlite.Connection = Depends(
     - 거래 장부(Ledger)에 'REWARD' 타입으로 기록됩니다.
     """
     try:
-        await db.execute("BEGIN IMMEDIATE") # 트랜잭션 시작
+        await db.execute("BEGIN IMMEDIATE")
 
         # 1. 유저 존재 확인 및 현재 잔액 조회
         cursor = await db.execute("SELECT balance FROM users WHERE id = ?", (reward.user_id,))
@@ -209,7 +203,7 @@ async def give_reward(reward: RewardRequest, db: aiosqlite.Connection = Depends(
             VALUES (?, 'REWARD', ?, ?, ?)
         """, (reward.user_id, reward.amount, new_balance, reward.description))
 
-        await db.commit() # 저장
+        await db.commit()
 
         return {
             "status": "success",
@@ -237,7 +231,7 @@ async def sell_stock(trade: TradeRequest, db: aiosqlite.Connection = Depends(get
     total_income = trade.price * trade.quantity
     
     try:
-        await db.execute("BEGIN IMMEDIATE") # 트랜잭션 시작
+        await db.execute("BEGIN IMMEDIATE")
 
         # 1. 내 주식고(Holdings) 확인
         cursor = await db.execute("""
@@ -257,7 +251,6 @@ async def sell_stock(trade: TradeRequest, db: aiosqlite.Connection = Depends(get
         # 2. 주식 수량 차감
         new_qty = current_qty - trade.quantity
         
-        # (사용자님의 좋은 습관: 수량이 0이 되어도 기록을 남김)
         await db.execute("""
             UPDATE holdings SET quantity = ? 
             WHERE user_id = ? AND company_name = ?
@@ -276,24 +269,17 @@ async def sell_stock(trade: TradeRequest, db: aiosqlite.Connection = Depends(get
         await db.execute("UPDATE users SET balance = ? WHERE id = ?", (new_balance, trade.user_id))
 
         # 4. 거래 원장(Ledger) 기록
-        # (기존에 작성하신 꼼꼼한 기록 코드 유지)
         await db.execute("""
             INSERT INTO transactions (user_id, transaction_type, amount, balance_after, description)
             VALUES (?, 'SELL', ?, ?, ?)
         """, (trade.user_id, total_income, new_balance, f"{trade.company_name} {trade.quantity}주 매도"))
 
-        await db.commit() # ✅ 여기서 DB 저장 완료!
+        await db.commit()
         
-        # 매도 보상 지급 (저장이 확실히 된 후 실행)
         try:
-            # 1. 매도 경험치 20점 지급
-            #await gain_exp(trade.user_id, 20)
-            
-            # 2. '첫 매도' 퀘스트 체크 (ID: trade_sell_first)
             await check_quest(trade.user_id, "trade_sell_first")
             
         except Exception as e:
-            # 보상 지급 중 에러가 나도, 주식 판 건 취소되면 안 되니까 로그만 찍고 넘어감
             print(f"⚠️ 보상 지급 중 에러 발생: {e}")
 
         return {
@@ -313,11 +299,10 @@ async def sell_stock(trade: TradeRequest, db: aiosqlite.Connection = Depends(get
 
 # 7. 지정가 주문 시스템 (Limit Order)
 
-# 주문 요청 모델
 class OrderRequest(BaseModel):
     user_id: int
-    ticker: str = None          # 신규 방식
-    company_name: str = None    # 기존 호환용
+    ticker: str = None
+    company_name: str = None
     order_type: str  
     price: int
     quantity: int
@@ -327,7 +312,6 @@ async def place_order(req: OrderRequest):
     """
     사용자의 주문을 DB에 저장하고, 동시에 '진짜 엔진'으로 전송합니다.
     """
-    # 호환성 처리: ticker가 없으면 company_name을 씁니다.
     target_ticker = req.ticker if req.ticker else req.company_name
     
     # 안전장치: 종목명이 아예 없으면 에러
@@ -372,7 +356,6 @@ async def place_order(req: OrderRequest):
         new_order_id = order_row[0]
         await db.commit()
         
-        # 엔진으로 주문 전송!
         try:
             from main import engine
             
@@ -433,7 +416,6 @@ async def cancel_order(order_id: int, db: aiosqlite.Connection = Depends(get_db_
         
         # 1. 주문 조회
         cursor = await db.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
-        # dictionary 형태로 변환 (혹시 row_factory 설정 문제일 수 있으니 수동 변환)
         columns = [description[0] for description in cursor.description]
         row = await cursor.fetchone()
         
@@ -506,14 +488,12 @@ async def process_market_price_change(company_name: str, current_price: float, d
         
         for order in buy_orders:
             # 주식 지급
-            # (이미 holdings에 있는지 확인)
             h_cursor = await db.execute("SELECT quantity, average_price FROM holdings WHERE user_id = ? AND company_name = ?", (order['user_id'], company_name))
             holding = await h_cursor.fetchone()
             
             if holding:
                 # 평단가 갱신 로직 (생략 가능하나 넣으면 좋음)
                 new_qty = holding['quantity'] + order['quantity']
-                # 평단가는 주문했던 가격(order['price'])으로 계산
                 new_avg = ((holding['quantity'] * holding['average_price']) + (order['quantity'] * order['price'])) / new_qty
                 await db.execute("UPDATE holdings SET quantity = ?, average_price = ? WHERE user_id = ? AND company_name = ?", (new_qty, new_avg, order['user_id'], company_name))
             else:
@@ -556,14 +536,13 @@ async def process_market_price_change(company_name: str, current_price: float, d
     
 # 레벨 체크 디펜던시
 async def verify_level_5(db: aiosqlite.Connection = Depends(get_db_connection)):
-    user_id = 1  # (테스트용 고정 ID)
+    user_id = 1
     cursor = await db.execute("SELECT level FROM users WHERE id = ?", (user_id,))
     row = await cursor.fetchone()
     
     current_level = row[0] if row else 1
     
     if current_level < 5:
-        # 레벨 부족하면 403 에러 발생!
         raise HTTPException(
             status_code=403, 
             detail=f"🔒 호가창은 LV.5부터 이용 가능합니다. (현재: LV.{current_level})"
@@ -580,7 +559,6 @@ async def get_order_book(
     [호가창 조회]
     레벨 5 이상인 유저만 주식의 매수/매도 대기 물량을 볼 수 있습니다.
     """
-    # (여기서는 실제 호가 데이터 대신 더미 데이터 반환)
     return {
         "company": company_name,
         "asks": [{"price": 81000, "qty": 10}, {"price": 82000, "qty": 50}], # 팔려는 사람

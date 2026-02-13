@@ -18,7 +18,7 @@ async def get_user_status(
         raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다.")
     
     return {
-        "user_id": target_user_id, # 확인용으로 ID도 같이 반환
+        "user_id": target_user_id,
         "username": row[0],
         "level": row[1],
         "exp": row[2],

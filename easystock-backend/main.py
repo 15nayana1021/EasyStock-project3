@@ -8,7 +8,6 @@ from datetime import datetime
 import aiosqlite
 from pydantic import BaseModel
 
-
 # 엔진과 모델 임포트
 
 from database import init_db
@@ -16,15 +15,35 @@ from routers import trade, social, news
 from core.market_engine import MarketEngine  # 진짜 엔진
 from models.domain_models import Order, OrderType, OrderSide, Agent # 주문 모델
 
-
 # [전역 설정]
-TARGET_TICKERS = ["삼성전자", "소현컴퍼니", "상은테크놀로지", "예진캐피탈"]
+TARGET_TICKERS = [
+    "삼송전자", "선우테크", "네오볼트전자",      # 전자
+    "마이크로하드", "소현소프트", "클라우드핀 IT", # IT
+    "재웅바이오", "상은메디랩", "루미젠바이오",    # 바이오
+    "진호파이낸스", "오리온자산운용", "예진캐피탈" # 금융
+]
 
+# 2. 각 기업의 상장 시초가 설정 (원하시는 금액으로 조정 가능합니다)
 INITIAL_PRICES = {
-    "삼성전자": 178500,
-    "소현컴퍼니": 60000,
-    "상은테크놀로지": 50000,
-    "예진캐피탈": 115000
+    "삼송전자": 172000,
+    "선우테크": 45000,
+    "네오볼트전자": 28000,
+    "마이크로하드": 580000,
+    "소현소프트": 62000,
+    "클라우드핀 IT": 34000,
+    "재웅바이오": 89000,
+    "상은메디랩": 54000,
+    "루미젠바이오": 41000,
+    "진호파이낸스": 22000,
+    "오리온자산운용": 115000,
+    "예진캐피탈": 198000
+}
+
+COMPANY_CATEGORIES = {
+    "삼송전자": "전자", "선우테크": "전자", "네오볼트전자": "전자",
+    "마이크로하드": "IT", "소현소프트": "IT", "클라우드핀 IT": "IT",
+    "재웅바이오": "바이오", "상은메디랩": "바이오", "루미젠바이오": "바이오",
+    "진호파이낸스": "금융", "오리온자산운용": "금융", "예진캐피탈": "금융"
 }
 
 # 🏆 [랭킹 점수판] 
@@ -131,13 +150,13 @@ async def simulate_market_background():
                 price_history[ticker].append({"time": datetime.now().strftime("%H:%M:%S"), "price": new_price})
                 if len(price_history[ticker]) > 30: price_history[ticker].pop(0)
 
-                # 3. 멘토링 (삼성전자만 Real AI)
-                if real_ai_mode and ticker == "삼성전자" and (loop_count % 30 == 0):
+                # 3. 멘토링 (삼송전자만 Real AI)
+                if real_ai_mode and ticker == "삼송전자" and (loop_count % 30 == 0):
                     pass 
                 elif (loop_count % 5 == 0):
                     # 무료 멘트
                     comments_pool = [{"n": "시스템", "c": "거래량 분석 중...", "s": "value-box"}, {"n": "알림", "c": "변동성 확대 주의", "s": "momentum-box"}]
-                    if ticker != "삼성전자" or not current_mentor_comments[ticker]:
+                    if ticker != "삼송전자" or not current_mentor_comments[ticker]:
                         current_mentor_comments[ticker] = random.sample(comments_pool, 1)
 
             
@@ -149,7 +168,7 @@ async def simulate_market_background():
                 order_id = db_order['id']
                 user_id = db_order['user_id']
                 target_ticker = db_order['company_name']
-                o_type = db_order['order_type'] # 'BUY' or 'SELL'
+                o_type = db_order['order_type']
                 qty = db_order['quantity']
                 price = db_order['price']
                 
@@ -162,7 +181,6 @@ async def simulate_market_background():
                 
                 for eng_order in check_list:
                     if eng_order.agent_id == f"User_{user_id}" and eng_order.price == price:
-                        # 아직 호가창에 남아있음 -> 체결 안 됨
                         is_alive_in_engine = True
                         break
                 
@@ -171,7 +189,7 @@ async def simulate_market_background():
                     print(f"🎉 [체결 성공] 사용자 {user_id}님의 {target_ticker} 주문이 체결되었습니다!")
 
                     if target_ticker in hot_scores:
-                        before_score = hot_scores[target_ticker] # 오르기 전 점수 기억
+                        before_score = hot_scores[target_ticker]
                         hot_scores[target_ticker] += 50
                         
                         print(f"🚀 [떡상] '{target_ticker}' 유저 거래 발생! 점수 폭등: {before_score} -> {hot_scores[target_ticker]} (+50)")
@@ -196,7 +214,6 @@ async def simulate_market_background():
                     # 3. 퀘스트 자동 달성 (보너스 + 경험치 지급)
                     quest_name = "첫 매수 성공" if o_type == "BUY" else "첫 매도 성공"
                     
-                    # quest_id 컬럼명을 명확하게 사용
                     cursor = await db.execute("SELECT count(*) FROM user_quests WHERE user_id = ? AND quest_id = ?", (user_id, quest_name))
                     
                     if (await cursor.fetchone())[0] == 0:
@@ -255,23 +272,26 @@ app.add_middleware(
 
 app.include_router(trade.router)
 app.include_router(social.router, prefix="/api/social", tags=["Social & Ranking"])
-app.include_router(news.router, prefix="/api/news", tags=["News"])
+app.include_router(news.router)
 
 @app.get("/api/market-data")
-async def get_market_data(ticker: str = "삼성전자"):
+async def get_market_data(ticker: str = "삼송전자"):
+    if ticker not in engine.companies:
+        print(f"⚠️ 경고: 존재하지 않는 종목 요청 들어옴 -> {ticker}")
+        return {"error": "Stock not found", "ticker": ticker}
+    
     if ticker in hot_scores:
         hot_scores[ticker] += 0.1
         hot_scores[ticker] = round(hot_scores[ticker], 1)
         
-        #print(f"👀 [내 관심] '{ticker}' 조회수 UP! (현재 점수: {hot_scores[ticker]})")
+        #print(f"[내 관심] '{ticker}' 조회수 UP! (현재 점수: {hot_scores[ticker]})")
 
     comp = engine.companies[ticker]
     book = engine.order_books.get(ticker, {"BUY": [], "SELL": []})
     
     # 엔진 호가
-    # engine.order_books에 있는 Order 객체들을 딕셔너리로 변환
-    buy_orders = [o.dict() for o in book["BUY"][:5]]  # 상위 5개
-    sell_orders = [o.dict() for o in book["SELL"][:5]] # 상위 5개
+    buy_orders = [o.dict() for o in book["BUY"][:5]]
+    sell_orders = [o.dict() for o in book["SELL"][:5]]
 
     if ticker in hot_scores:
         hot_scores[ticker] += 1
@@ -287,25 +307,38 @@ async def get_market_data(ticker: str = "삼성전자"):
         "mentors": current_mentor_comments.get(ticker, [])
     }
 
-@app.get("/stocks")
+@app.get("/api/stocks")
 async def get_stock_list():
     """
-    엔진에 있는 모든 종목의 최신 정보를 가져옵니다.
+    [주식 목록 조회]
+    12개 기업의 현재가, 등락률, 그리고 '카테고리(sector)' 정보를 반환합니다.
     """
     result = []
+    
     for ticker in TARGET_TICKERS:
-        # 엔진에서 실시간 정보 조회
+        # 1. 현재 가격 가져오기 (엔진에 없으면 초기값 사용)
         if ticker in engine.companies:
-            comp = engine.companies[ticker]
-            result.append({
-                "ticker": ticker,
-                "name": ticker,
-                "sector": "IT/반도체" if ticker == "삼성전자" else "벤처/스타트업",
-                "current_price": int(comp.current_price),
-                "fluctuation_rate": 0.0
-            })
+            current_price = int(engine.companies[ticker].current_price)
+        else:
+            current_price = INITIAL_PRICES.get(ticker, 10000)
+            
+        # 2. 등락률 계산
+        start_price = INITIAL_PRICES.get(ticker, current_price)
+        if start_price == 0:
+            change_rate = 0.0
+        else:
+            change_rate = ((current_price - start_price) / start_price) * 100
+            
+        # 3. 데이터 조립 (여기서 sector 정보를 정확히 넣어줍니다!)
+        result.append({
+            "ticker": ticker,
+            "name": ticker,
+            "sector": COMPANY_CATEGORIES.get(ticker, "기타"), 
+            "price": current_price,
+            "change_rate": round(change_rate, 2)
+        })
+        
     return result
-
 # 로그인 및 회원가입 API
 class LoginRequest(BaseModel):
     nickname: str
@@ -317,7 +350,6 @@ async def login_user(request: LoginRequest):
     이미 있는 유저면 그냥 로그인 성공 처리합니다.
     """
     async with aiosqlite.connect("stock_game.db") as db:
-        # users 테이블이 없으면 만드는 안전장치
         await db.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -406,7 +438,6 @@ async def get_stock_detail(ticker: str):
         "name": ticker,
         "sector": "Tech",
         "current_price": int(comp.current_price),
-        # 필요한 경우 여기에 차트 데이터나 호가 데이터 추가 가능
     }
 
 @app.get("/api/ranking/hot")
@@ -416,7 +447,6 @@ def get_hot_ranking():
 
     response_data = []
     
-    # enumerate(..., 1)을 써서 1위부터 순위를 매깁니다.
     for rank, (ticker_name, score) in enumerate(sorted_ranking, 1):
         
         # A. 실시간 현재가 가져오기 (엔진에서 조회)
@@ -450,5 +480,4 @@ app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
 if __name__ == "__main__":
     import uvicorn
-    # access_log=False 옵션이 핵심입니다!
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True, access_log=False)

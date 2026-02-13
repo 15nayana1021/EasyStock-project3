@@ -24,7 +24,7 @@ const PopularStocks: React.FC = () => {
 
         const data = await response.json();
 
-        // [중요] 데이터가 어떻게 오는지 터미널 콘솔에서 직접 확인해보기
+        // 데이터가 어떻게 오는지 터미널 콘솔에서 직접 확인해보기
         console.log("백엔드에서 온 데이터:", data);
 
         const mappedData = data.map((item: any) => {
@@ -36,7 +36,7 @@ const PopularStocks: React.FC = () => {
           return {
             rank: item.rank || 0,
             name: stockName,
-            price: `${Number(priceValue).toLocaleString()}원`, // 숫자로 강제 변환 후 쉼표 처리
+            price: `${Number(priceValue).toLocaleString()}원`,
             change: `${changeValue > 0 ? "+" : ""}${changeValue.toFixed(2)}%`,
             isUp: changeValue >= 0,
           };
@@ -56,7 +56,7 @@ const PopularStocks: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full bg-[#E8F3EF] rounded-t-[2.5rem] border border-white/50 shadow-inner overflow-hidden">
-      {/* 헤더 디자인 (기존 유지) */}
+      {/* 헤더 디자인 */}
       <div className="p-5 pb-2">
         <div className="flex items-center space-x-2 text-[#2D8C69]">
           <div className="bg-white p-1.5 rounded-xl shadow-sm">
@@ -76,7 +76,6 @@ const PopularStocks: React.FC = () => {
         <div className="flex flex-col space-y-3 mt-3">
           {stocks.length > 0 ? (
             stocks.map((stock) => {
-              // 1, 2, 3위 뱃지 스타일 (기존 디자인 유지)
               let badgeClass = "bg-gray-100 text-gray-400";
               if (stock.rank === 1) {
                 badgeClass =

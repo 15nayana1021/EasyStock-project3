@@ -44,7 +44,6 @@ async def init_db():
         )
         """)
 
-        # user_quests 테이블에 is_completed가 없다면 추가
         try: 
             await db.execute("ALTER TABLE user_quests ADD COLUMN is_completed INTEGER DEFAULT 1") 
             print("✅ DB 업데이트: 'is_completed' 컬럼 추가됨")
@@ -52,7 +51,6 @@ async def init_db():
             pass
 
         try: 
-            # 혹시 quest_name으로 만들어진 경우를 대비해 quest_id로 통일하거나 별칭 처리
             pass
         except: pass
 
@@ -99,12 +97,11 @@ async def init_db():
             summary TEXT,
             sentiment TEXT,
             impact_score INTEGER,
+            source TEXT,
             published_at TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """)
-
-        # 테이블은 있는데 컬럼이 없을 수도 있으니, 하나씩 추가를 시도합니다.
 
         try:
             await db.execute("ALTER TABLE news ADD COLUMN ticker TEXT")

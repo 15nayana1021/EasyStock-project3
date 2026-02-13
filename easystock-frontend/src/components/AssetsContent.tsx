@@ -1,26 +1,39 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { PortfolioItem } from "../types";
 
 interface AssetsContentProps {
   cash: number;
   portfolio: PortfolioItem[];
+  refreshData?: () => void;
 }
 
-const AssetsContent: React.FC<AssetsContentProps> = ({ cash, portfolio }) => {
+const AssetsContent: React.FC<AssetsContentProps> = ({
+  cash,
+  portfolio,
+  refreshData,
+}) => {
+  useEffect(() => {
+    // 부모로부터 받은 새로고침 함수가 있을 때만 실행
+    if (refreshData) {
+      const interval = setInterval(() => {
+        console.log("🔄 자산 정보 실시간 동기화 중...");
+        refreshData();
+      }, 5000);
+
+      return () => clearInterval(interval);
+    }
+  }, [refreshData]);
   // 1. 데이터 계산
   const totalStockValue = portfolio.reduce((acc, item) => {
-    // 현재가가 없으면 평단가로 계산 (안전장치)
     const price =
       typeof item.current_price === "number"
         ? item.current_price
         : item.average_price;
-    // item.quantity (숫자)를 사용
     return acc + price * item.quantity;
   }, 0);
 
   const totalAsset = cash + totalStockValue;
 
-  // 비중 계산
   const stockRatio =
     totalAsset > 0 ? Math.round((totalStockValue / totalAsset) * 100) : 0;
   const cashRatio = totalAsset > 0 ? 100 - stockRatio : 100;
@@ -31,7 +44,7 @@ const AssetsContent: React.FC<AssetsContentProps> = ({ cash, portfolio }) => {
 
   return (
     <div className="flex flex-col h-full bg-[#E8F3EF] rounded-t-[2.5rem] border border-white/50 shadow-inner overflow-hidden">
-      {/* 헤더 디자인 (1번 파일 스타일) */}
+      {/* 헤더 디자인 */}
       <div className="p-5 pb-3">
         <div className="flex justify-center">
           <h2 className="text-xl font-extrabold text-gray-800 tracking-tight">
@@ -42,13 +55,13 @@ const AssetsContent: React.FC<AssetsContentProps> = ({ cash, portfolio }) => {
 
       <div className="flex-1 overflow-y-auto px-5 hide-scrollbar pb-32">
         <div className="flex flex-col items-center mt-4">
-          {/* 도넛 차트 구현 (1번 파일의 SVG 방식) */}
+          {/* 도넛 차트구현 */}
           <div className="relative w-64 h-64 flex items-center justify-center">
             <svg
               viewBox="0 0 100 100"
               className="w-full h-full transform -rotate-90"
             >
-              {/* 현금 영역 (연두색) */}
+              {/* 현금 영역 */}
               <circle
                 cx="50"
                 cy="50"
@@ -59,7 +72,7 @@ const AssetsContent: React.FC<AssetsContentProps> = ({ cash, portfolio }) => {
                 strokeDasharray={`${dashTotal}`}
                 strokeDashoffset="0"
               />
-              {/* 주식 영역 (진한 초록색) - 애니메이션 효과 포함 */}
+              {/* 주식 영역 */}
               <circle
                 cx="50"
                 cy="50"
@@ -84,7 +97,7 @@ const AssetsContent: React.FC<AssetsContentProps> = ({ cash, portfolio }) => {
               </span>
             </div>
 
-            {/* 좌우 둥둥 떠있는 라벨 (1번 파일 디자인) */}
+            {/* 좌우 둥둥 떠있는 라벨 */}
             <div className="absolute left-[-5%] top-[55%] flex flex-col items-center bg-white/80 backdrop-blur-sm px-2 py-1 rounded-lg border border-green-100/50 shadow-sm animate-in fade-in duration-700">
               <span className="text-[10px] font-bold text-[#2D8C69]">주식</span>
               <span className="text-xs font-black text-[#2D8C69]">
@@ -100,7 +113,7 @@ const AssetsContent: React.FC<AssetsContentProps> = ({ cash, portfolio }) => {
             </div>
           </div>
 
-          {/* 하단 카드 디자인 (1번 파일의 그라데이션 헤더 스타일) */}
+          {/* 하단 카드 디자인 */}
           <div className="w-full mt-8 space-y-4">
             {/* 주식 카드 */}
             <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-green-50/50 animate-in slide-in-from-bottom-2 duration-300">

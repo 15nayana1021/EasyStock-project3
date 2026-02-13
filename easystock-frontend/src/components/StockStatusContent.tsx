@@ -80,6 +80,27 @@ const StockStatusContent: React.FC<StockStatusContentProps> = ({
     return acc + priceNum * (item.sharesCount || 0);
   }, 0);
 
+  const totalStockValue = portfolio.reduce((acc, item) => {
+    const price =
+      typeof item.current_price === "number"
+        ? item.current_price
+        : item.average_price;
+    return acc + price * item.quantity;
+  }, 0);
+
+  // 총 매수 금액 (원금 기준)
+  const totalInvested = portfolio.reduce((acc, item) => {
+    return acc + item.average_price * item.quantity;
+  }, 0);
+
+  // 총 자산 = 현금 + 총 주식 평가금
+  const totalAsset = cash + totalStockValue;
+
+  // 평가손익 및 수익률 계산
+  const totalProfit = totalStockValue - totalInvested;
+  const profitRate =
+    totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0;
+
   // 2. 총 자산 계산
   const totalAssets = (cash || 0) + stockValue;
 
@@ -235,34 +256,42 @@ const StockStatusContent: React.FC<StockStatusContentProps> = ({
   const renderStatusView = () => (
     <div className="flex flex-col animate-in fade-in duration-300 pb-32">
       <div className="relative mt-2 mb-8 px-5">
-        <div className="bg-gradient-to-br from-[#40856C] via-[#2D8C69] to-[#247054] rounded-[2.5rem] p-6 shadow-xl shadow-green-900/20 relative overflow-hidden">
-          <div className="absolute inset-0 opacity-10 pointer-events-none bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white via-transparent to-transparent"></div>
-          <div className="flex flex-col space-y-1 relative z-10">
-            <span className="text-[11px] text-white/70 font-bold flex items-center">
-              <span className="mr-1 opacity-80"></span>총 보유자산
+        <div className="bg-[#2B8665] rounded-[2.5rem] p-6 shadow-md text-white">
+          {/* 총 자산 영역 */}
+          <div className="mb-4">
+            <span className="text-white/80 text-[11px] font-bold tracking-wide">
+              총 보유자산
             </span>
-            <h1 className="text-2xl font-black text-white tracking-tighter mb-4">
-              {totalAssets.toLocaleString()}원
-            </h1>
-            <div className="h-[1px] w-full bg-white/10 my-2"></div>
-            <div className="flex justify-between items-center">
-              <div className="flex flex-col">
-                <span className="text-[10px] text-white/50 font-bold">
-                  보유 현금
-                </span>
-                <span className="text-sm font-bold text-white/90">
-                  {cash.toLocaleString()}원
-                </span>
-              </div>
-              <div className="w-[1px] h-8 bg-white/10"></div>
-              <div className="flex flex-col text-right">
-                <span className="text-[10px] text-white/50 font-bold">
-                  주식 평가금
-                </span>
-                <span className="text-sm font-black text-white">
-                  {stockValue.toLocaleString()}원
-                </span>
-              </div>
+            <h2 className="text-2xl font-black mt-1 tracking-tight">
+              {totalAsset.toLocaleString()}원
+            </h2>
+          </div>
+
+          {/* 하단 평가손익 & 수익률 영역 */}
+          <div className="flex items-center pt-4 border-t border-white/20">
+            {/* 평가손익 */}
+            <div className="flex-1">
+              <span className="text-white/60 text-[10px] font-bold">
+                평가손익
+              </span>
+              <p className="text-sm font-black mt-1 tracking-tight">
+                {totalProfit > 0 ? "+ " : totalProfit < 0 ? "- " : ""}
+                {Math.abs(totalProfit).toLocaleString()}원
+              </p>
+            </div>
+
+            {/* 중간 세로 구분선 */}
+            <div className="w-[1px] h-8 bg-white/20 mx-4"></div>
+
+            {/* 수익률 */}
+            <div className="flex-1 text-right">
+              <span className="text-white/60 text-[10px] font-bold">
+                수익률
+              </span>
+              <p className="text-sm font-black mt-1 tracking-tight">
+                {profitRate > 0 ? "▲ +" : profitRate < 0 ? "▼ " : ""}
+                {profitRate.toFixed(2)}%
+              </p>
             </div>
           </div>
         </div>
@@ -270,9 +299,7 @@ const StockStatusContent: React.FC<StockStatusContentProps> = ({
 
       <div className="mb-8 px-5">
         <div className="flex items-center space-x-1 mb-4 cursor-pointer group">
-          <h2 className="text-lg font-black text-gray-800">
-            보유자산 포트폴리오
-          </h2>
+          <h2 className="text-lg font-black text-gray-800"></h2>
           <ChevronRight
             size={18}
             className="text-gray-300 group-hover:translate-x-0.5 transition-transform"
@@ -282,7 +309,7 @@ const StockStatusContent: React.FC<StockStatusContentProps> = ({
           {portfolio.length > 0 ? (
             portfolio.map((item) => (
               <div
-                key={item.id}
+                key={item.ticker}
                 onClick={() => setSelectedStock(item)}
                 className="bg-white rounded-[1.5rem] p-4 flex items-center justify-between shadow-sm border border-gray-50/50 cursor-pointer active:scale-[0.98] transition-all"
               >

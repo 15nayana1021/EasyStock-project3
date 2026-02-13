@@ -94,37 +94,102 @@
       id="stock-menu"
       style="
         margin: 10px;
-        padding: 10px;
-        background: #f0f0f0;
-        border-radius: 8px;
-        color: black;
+        padding: 20px;
+        background: #252525;
+        border-radius: 12px;
+        color: white;
+        border: 1px solid #444;
       "
     >
-      <h3>📈 종목 선택</h3>
-      <button
-        class="btn btn-outline-primary btn-sm"
-        onclick="changeTicker('삼성전자')"
-      >
-        삼성전자
-      </button>
-      <button
-        class="btn btn-outline-primary btn-sm"
-        onclick="changeTicker('소현컴퍼니')"
-      >
-        소현컴퍼니
-      </button>
-      <button
-        class="btn btn-outline-primary btn-sm"
-        onclick="changeTicker('상은테크놀로지')"
-      >
-        상은테크놀로지
-      </button>
-      <button
-        class="btn btn-outline-primary btn-sm"
-        onclick="changeTicker('예진캐피탈')"
-      >
-        예진캐피탈
-      </button>
+      <h3 class="mb-3">📈 종목 선택</h3>
+
+      <div class="mb-3">
+        <strong class="text-muted d-block mb-2">📟 전자</strong>
+        <button
+          class="btn btn-outline-danger btn-sm"
+          onclick="changeTicker('삼송전자')"
+        >
+          삼송전자
+        </button>
+        <button
+          class="btn btn-outline-danger btn-sm"
+          onclick="changeTicker('선우테크')"
+        >
+          선우테크
+        </button>
+        <button
+          class="btn btn-outline-danger btn-sm"
+          onclick="changeTicker('네오볼트전자')"
+        >
+          네오볼트전자
+        </button>
+      </div>
+
+      <div class="mb-3">
+        <strong class="text-muted d-block mb-2">💻 IT</strong>
+        <button
+          class="btn btn-outline-primary btn-sm"
+          onclick="changeTicker('마이크로하드')"
+        >
+          마이크로하드
+        </button>
+        <button
+          class="btn btn-outline-primary btn-sm"
+          onclick="changeTicker('소현소프트')"
+        >
+          소현소프트
+        </button>
+        <button
+          class="btn btn-outline-primary btn-sm"
+          onclick="changeTicker('클라우드핀 IT')"
+        >
+          클라우드핀 IT
+        </button>
+      </div>
+
+      <div class="mb-3">
+        <strong class="text-muted d-block mb-2">🧪 바이오</strong>
+        <button
+          class="btn btn-outline-success btn-sm"
+          onclick="changeTicker('재웅바이오')"
+        >
+          재웅바이오
+        </button>
+        <button
+          class="btn btn-outline-success btn-sm"
+          onclick="changeTicker('상은메디랩')"
+        >
+          상은메디랩
+        </button>
+        <button
+          class="btn btn-outline-success btn-sm"
+          onclick="changeTicker('루미젠바이오')"
+        >
+          루미젠바이오
+        </button>
+      </div>
+
+      <div>
+        <strong class="text-muted d-block mb-2">💰 금융</strong>
+        <button
+          class="btn btn-outline-warning btn-sm"
+          onclick="changeTicker('진호파이낸스')"
+        >
+          진호파이낸스
+        </button>
+        <button
+          class="btn btn-outline-warning btn-sm"
+          onclick="changeTicker('오리온자산운용')"
+        >
+          오리온자산운용
+        </button>
+        <button
+          class="btn btn-outline-warning btn-sm"
+          onclick="changeTicker('예진캐피탈')"
+        >
+          예진캐피탈
+        </button>
+      </div>
     </div>
 
     <div class="row mb-3 text-center">
@@ -172,7 +237,7 @@
     </div>
 
     <script>
-      // 1. 차트 설정 (기존 코드 유지)
+      // 1. 차트 설정
       const ctx = document.getElementById("priceChart").getContext("2d");
       const chart = new Chart(ctx, {
         type: "line",
@@ -202,7 +267,7 @@
       });
 
       // 현재 보고 있는 종목 변수
-      let currentTicker = "삼성전자";
+      let currentTicker = "삼송전자";
 
       // 종목 변경 함수
       function changeTicker(tickerName) {
@@ -214,14 +279,12 @@
         chart.update();
 
         alert(tickerName + "으로 종목을 변경합니다!");
-        fetchMarketData(); // 즉시 데이터 갱신 요청
+        fetchMarketData();
       }
 
       // 데이터 가져오는 함수
       async function fetchMarketData() {
         try {
-          // 기존: fetch('/api/market-data');
-          // 변경: currentTicker 변수를 뒤에 붙여서 요청
           const response = await fetch(
             `/api/market-data?ticker=${currentTicker}`,
           );
@@ -295,7 +358,7 @@
         }
       }
 
-      setInterval(fetchMarketData, 1000); // 1초마다 갱신
+      setInterval(fetchMarketData, 1000);
     </script>
   </body>
 </html>
