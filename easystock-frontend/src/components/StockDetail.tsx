@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
-// import { useParams, useNavigate } from 'react-router-dom';
+import { ArrowLeft, Star, Share2, ChevronDown, ChevronUp } from "lucide-react";
+import { useParams, useNavigate, useOutletContext } from "react-router-dom";
 import {
   ChevronLeft,
   Heart,
@@ -13,10 +14,17 @@ import { StockData, WatchlistItem } from "../types";
 import {
   newsListMock,
   agentAdvices,
-  NewsItem,
   AgentAdvice,
   allRankingStocks,
 } from "../data/mockData";
+
+import {
+  placeOrder,
+  fetchMyOrders,
+  cancelOrder as apiCancelOrder,
+  fetchNewsDetail,
+  NewsItem,
+} from "../services/api";
 
 interface OHLCData {
   open: number;
@@ -56,6 +64,7 @@ const StockDetail: React.FC<StockDetailProps> = ({
   onBack,
   onBuy,
   onSell,
+  virtualDate,
 }) => {
   // const { id } = useParams<{ id: string }>();
   // const navigate = useNavigate();
@@ -69,8 +78,8 @@ const StockDetail: React.FC<StockDetailProps> = ({
   // const isLiked = stock ? watchlist.some(item => item.name === stock.name) : false;
 
   const [activeTab, setActiveTab] = useState("차트");
-  const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
   const [isTradeModalOpen, setIsTradeModalOpen] = useState(false);
+  const [isOrdering, setIsOrdering] = useState(false);
   const [tradeTab, setTradeTab] = useState<"buy" | "sell" | "pending">("buy");
   const [newsDisplayCount, setNewsDisplayCount] = useState(5);
   const [selectedOrderBookPrice, setSelectedOrderBookPrice] = useState<
@@ -99,6 +108,35 @@ const StockDetail: React.FC<StockDetailProps> = ({
   const [focusedField, setFocusedField] = useState<"price" | "amount">(
     "amount",
   );
+
+  const { activeNews } = useOutletContext<{ activeNews: NewsItem[] }>();
+
+  // 1. 종목별 키워드 매핑 (줄임말 정의)
+  const STOCK_KEYWORDS: Record<string, string[]> = {
+    삼송전자: ["삼송전자", "송전자", "삼송"],
+    네오볼트전자: ["네오볼트", "네볼"],
+    마이크로하드: ["마이크로하드", "마하", "M하드"],
+    루미젠바이오: ["루미젠", "루미젠바이오"],
+  };
+
+  // 2. 뉴스 필터링 로직 수정
+  const stockNews = useMemo(() => {
+    if (!stock || !activeNews) return [];
+
+    // 현재 종목에 해당하는 키워드 리스트 가져오기 (없으면 기본 이름 사용)
+    const keywords = STOCK_KEYWORDS[stock.name] || [stock.name];
+
+    return activeNews.filter((news) => {
+      // 제목, 본문, 요약 중 하나라도 키워드가 포함되어 있는지 검사
+      const targetText = `${news.title} ${news.content || ""} ${news.summary || ""}`;
+
+      // 키워드 배열 중 하나라도 텍스트에 들어있으면 true 반환
+      return keywords.some((key) => targetText.includes(key));
+    });
+  }, [activeNews, stock]);
+
+  const [visibleCount, setVisibleCount] = useState(5);
+  const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
 
   // Pending Orders State
   const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
@@ -181,7 +219,6 @@ const StockDetail: React.FC<StockDetailProps> = ({
         const orderBook = await fetchOrderBook(ticker);
         if (orderBook) {
           setCurrentPrice(orderBook.current_price);
-          // 매도(asks)는 위에서 아래로(가격 높은 순), 매수(bids)는 아래로(가격 낮은 순)
           const combined: OrderBookItem[] = [
             ...orderBook.asks.sort((a, b) => b.price - a.price),
             ...orderBook.bids.sort((a, b) => b.price - a.price),
@@ -218,6 +255,50 @@ const StockDetail: React.FC<StockDetailProps> = ({
     }
   }, [candleData]);
 
+  // 2. 아이디 가져오기 및 미체결 로드
+  const userId = localStorage.getItem("stocky_user_id") || "1";
+
+  useEffect(() => {
+    const loadPendingOrders = async () => {
+      if (tradeTab === "pending" && userId) {
+        try {
+          const orders = await fetchMyOrders(userId);
+
+          const myPending = orders.filter(
+            (o: any) =>
+              o.status === "PENDING" ||
+              o.status === "placed" ||
+              o.status === "WAITING",
+          );
+
+          const mappedOrders: PendingOrder[] = myPending.map((o: any) => {
+            const rawSide = o.order_type || o.side || o.type || "정보없음";
+
+            const upperSide = String(rawSide).toUpperCase().trim();
+            const isBuy =
+              upperSide.includes("BUY") ||
+              upperSide.includes("BID") ||
+              upperSide.includes("매수");
+
+            return {
+              id: o.order_id || o.id,
+              type: isBuy ? "buy" : "sell",
+              name: o.ticker || o.company_name || stock.name,
+              qty: String(o.quantity),
+              price: String(o.price),
+            };
+          });
+          setPendingOrders(mappedOrders);
+        } catch (error) {
+          console.error("미체결 내역 로딩 실패:", error);
+        }
+      }
+    };
+
+    loadPendingOrders();
+  }, [tradeTab, userId, stock?.name]);
+
+  // 3. 키패드 입력 로직
   const handleKeypadPress = (key: string) => {
     const isAmount = focusedField === "amount";
     const currentVal = isAmount ? orderAmount : orderPrice.replace(/,/g, "");
@@ -239,35 +320,69 @@ const StockDetail: React.FC<StockDetailProps> = ({
     }
   };
 
-  const executeOrder = () => {
-    if (!stock) return;
+  // 4. 주문 취소 함수
+  const handleCancelOrder = async (orderId: number) => {
+    if (!window.confirm("정말 주문을 취소하시겠습니까?")) return;
 
-    const price = parseInt(orderPrice.replace(/,/g, ""));
-    const qty = parseInt(orderAmount);
-    const currentPrice = parseInt(stock.price.replace(/[^0-9]/g, ""));
+    const result = await apiCancelOrder(orderId);
+    if (result.status === "success" || result.success) {
+      alert("주문이 취소되었습니다.");
+      setPendingOrders((prev) => prev.filter((order) => order.id !== orderId));
+    } else {
+      alert("취소 실패: " + (result.detail || "오류가 발생했습니다."));
+    }
+  };
 
-    // If price doesn't match current price, add to pending orders
-    if (price !== currentPrice) {
-      const newOrder: PendingOrder = {
-        id: Date.now(),
-        type: tradeTab === "buy" ? "buy" : "sell",
-        name: stock.name,
-        qty: orderAmount,
-        price: orderPrice,
-      };
-      setPendingOrders((prev) => [...prev, newOrder]);
-      setIsTradeModalOpen(false);
+  // 5. 주문 실행 함수
+  const executeOrder = async () => {
+    console.log("주문 시도! 전송할 날짜:", virtualDate);
+    if (!stock || !userId) {
+      alert("로그인이 필요합니다.");
       return;
     }
 
-    // Execute immediately if price matches
-    if (tradeTab === "buy" && onBuy) {
-      onBuy(stock, price, qty);
-    } else if (tradeTab === "sell" && onSell) {
-      onSell(stock, price, qty);
+    if (isOrdering) return;
+
+    const price = parseInt(orderPrice.replace(/,/g, ""));
+    const qty = parseInt(orderAmount);
+
+    if (price <= 0 || qty <= 0) {
+      alert("가격과 수량을 올바르게 입력해주세요.");
+      return;
     }
 
-    setIsTradeModalOpen(false);
+    setIsOrdering(true);
+    try {
+      const side = tradeTab === "buy" ? "BUY" : "SELL";
+      const result = await placeOrder(
+        stock.symbol || stock.name,
+        side,
+        price,
+        qty,
+        userId,
+        virtualDate,
+      );
+
+      if (result.success || result.order_id) {
+        setIsTradeModalOpen(false);
+        setOrderAmount("1");
+
+        if (side === "BUY" && onBuy) (onBuy as any)(stock, price, qty);
+        if (side === "SELL" && onSell) (onSell as any)(stock, price, qty);
+
+        // 미체결인 경우에만 사용자 안심용으로 얼럿 하나 띄워줍니다.
+        if (result.status !== "FILLED") {
+          alert("주문이 접수되었습니다. (미체결)");
+        }
+      } else {
+        alert("주문 실패: " + (result.msg || "잔액이나 수량을 확인하세요."));
+      }
+    } catch (error) {
+      console.error(error);
+      alert("서버와 통신할 수 없습니다.");
+    } finally {
+      setIsOrdering(false);
+    }
   };
 
   const renderOrderBook = () => {
@@ -675,46 +790,119 @@ const StockDetail: React.FC<StockDetailProps> = ({
     );
   };
 
+  // 2. 뉴스 화면 그리기
+  const handleNewsClick = async (id: number) => {
+    try {
+      const detail = await fetchNewsDetail(id);
+      setSelectedNews(detail);
+    } catch (error) {
+      // 실패하면 목록에 있는 정보라도 보여줌
+      const fallback = stockNews.find((n) => n.id === id);
+      if (fallback) setSelectedNews(fallback);
+    }
+  };
+
+  const handleShowMore = () => setVisibleCount((prev) => prev + 5);
+  const handleBack = () => setSelectedNews(null);
+  const handleShowLess = () => setVisibleCount(5);
+
+  // 보여줄 뉴스 개수 자르기
+  const visibleNews = stockNews.slice(0, visibleCount);
+  const hasMore = stockNews.length > visibleCount;
+
+  // 뉴스 렌더링
   const renderNews = () => {
-    // [백엔드 피드백 반영]: 현재 종목명과 관련된 뉴스만 필터링
-    const filteredNews = newsListMock.filter(
-      (news) =>
-        news.category.includes(stock.name) ||
-        news.title.includes(stock.name) ||
-        news.category === "시장 이슈", // 시장 이슈는 공통으로 노출
-    );
-
-    const displayedNews = filteredNews.slice(0, newsDisplayCount);
-    const hasMore = filteredNews.length > newsDisplayCount;
-
-    if (filteredNews.length === 0) {
+    // A. 상세 보기 모드 (뉴스를 클릭했을 때)
+    if (selectedNews) {
       return (
-        <div className="flex-1 flex flex-col items-center justify-center text-gray-400 py-10 animate-in fade-in">
-          <Clock size={40} className="mb-3 opacity-20" />
-          <p className="text-sm font-bold">
-            {stock.name} 관련 소식을 대기 중입니다
-          </p>
+        <div className="flex flex-col h-full animate-in fade-in duration-200">
+          <button
+            onClick={handleBack}
+            className="mb-4 flex items-center text-gray-500 hover:text-gray-800 transition-colors text-sm font-bold"
+          >
+            ← 목록으로
+          </button>
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+            <div className="flex justify-between items-center mb-3">
+              <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded-full">
+                {selectedNews.category || "뉴스"}
+              </span>
+              <span className="text-[10px] text-gray-400">
+                {selectedNews.display_date || selectedNews.time}
+              </span>
+            </div>
+            <h2 className="text-lg font-extrabold text-gray-900 leading-tight mb-4">
+              {selectedNews.title}
+            </h2>
+            <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+              {selectedNews.content ||
+                selectedNews.summary ||
+                "내용이 없습니다."}
+            </div>
+            <div className="mt-6 pt-4 border-t border-gray-100 text-right text-xs text-gray-400">
+              Source: {selectedNews.source || "Stocky News"}
+            </div>
+          </div>
         </div>
       );
     }
 
+    // B. 목록 보기 모드 (평소 화면)
     return (
-      <div className="flex-1 flex flex-col overflow-y-auto hide-scrollbar animate-in fade-in duration-500 mb-2 pb-8">
-        <div className="space-y-4">
-          {displayedNews.map((news) => (
+      <div className="space-y-3 pb-20">
+        {visibleNews.length > 0 ? (
+          visibleNews.map((news, index) => (
             <div
-              key={news.id}
-              onClick={() => setSelectedNews(news)}
-              className="bg-white rounded-[1.5rem] p-5 shadow-sm border border-gray-50 cursor-pointer"
+              key={`${news.id}-${index}`}
+              onClick={() => handleNewsClick(news.id)}
+              className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 hover:border-green-200 transition-all cursor-pointer group"
             >
-              <h3 className="text-[14px] font-bold text-gray-800">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[11px] font-bold text-gray-400">
+                  • {news.category || "뉴스"}
+                </span>
+              </div>
+              <h3 className="text-base font-extrabold text-gray-800 leading-snug mb-1">
                 {news.title}
               </h3>
-              <span className="text-[10px] text-gray-400 mt-2 block">
-                {news.time} • {news.source}
-              </span>
+              <p className="text-[12px] text-gray-500 font-medium opacity-80 line-clamp-2">
+                {news.summary}
+              </p>
+              <div className="mt-3 flex justify-end items-center text-[10px] text-gray-400 gap-2">
+                <span className="font-medium text-gray-500">
+                  — {news.source || "Stocky News"}
+                </span>
+                <span>{news.display_date || news.time}</span>
+              </div>
             </div>
-          ))}
+          ))
+        ) : (
+          <div className="text-center py-10 text-gray-400 text-xs font-bold">
+            아직 등록된 뉴스가 없습니다.
+          </div>
+        )}
+
+        {/* 더보기 / 접기 버튼 */}
+        <div className="flex gap-2 mt-4">
+          {hasMore && (
+            <button
+              onClick={handleShowMore}
+              className="flex-1 py-4 bg-white/50 hover:bg-white rounded-2xl flex items-center justify-center space-x-2 text-gray-500 font-bold text-xs transition-all active:scale-[0.98] border border-white shadow-sm"
+            >
+              <ChevronDown size={14} />
+              <span>더보기 ({stockNews.length - visibleCount}개 남음)</span>
+            </button>
+          )}
+
+          {visibleCount > 5 && (
+            <button
+              onClick={handleShowLess}
+              className="flex-1 py-4 bg-white/50 hover:bg-white rounded-2xl flex items-center justify-center space-x-2 text-gray-500 font-bold text-xs transition-all active:scale-[0.98] border border-white shadow-sm"
+            >
+              <ChevronUp size={14} />
+              <span>접기</span>
+            </button>
+          )}
         </div>
       </div>
     );
@@ -755,40 +943,6 @@ const StockDetail: React.FC<StockDetailProps> = ({
     </div>
   );
 
-  const renderNewsModal = () => {
-    if (!selectedNews) return null;
-    return (
-      <div className="absolute inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center animate-in fade-in duration-200">
-        <div className="bg-white w-full h-[90%] sm:h-[80%] sm:w-[90%] rounded-t-3xl sm:rounded-3xl p-6 flex flex-col animate-in slide-in-from-bottom duration-300 shadow-2xl">
-          <div className="flex justify-between items-start mb-4 shrink-0">
-            <span className="bg-[#2D8C69]/10 text-[#2D8C69] px-3 py-1 rounded-full text-xs font-black">
-              {selectedNews.category}
-            </span>
-            <button
-              onClick={() => setSelectedNews(null)}
-              className="p-2 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200"
-            >
-              <X size={20} />
-            </button>
-          </div>
-          <div className="flex-1 overflow-y-auto hide-scrollbar">
-            <h2 className="text-xl font-black text-gray-800 mb-3 leading-snug">
-              {selectedNews.title}
-            </h2>
-            <div className="flex items-center space-x-2 text-xs text-gray-400 font-bold mb-6 border-b border-gray-50 pb-4">
-              <span>{selectedNews.source}</span>
-              <span>•</span>
-              <span>{selectedNews.time}</span>
-            </div>
-            <div className="text-gray-700 text-sm leading-relaxed whitespace-pre-wrap font-medium pb-10">
-              {selectedNews.content}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   const renderTradeModal = () => {
     if (!isTradeModalOpen) return null;
     const keypad = [
@@ -828,8 +982,7 @@ const StockDetail: React.FC<StockDetailProps> = ({
 
         {/* Content Area */}
         {tradeTab === "pending" ? (
-          // Pending Orders Tab
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
             {pendingOrders.length === 0 ? (
               <div className="flex items-center justify-center h-full text-gray-400 font-bold">
                 미체결 주문이 없습니다
@@ -839,27 +992,27 @@ const StockDetail: React.FC<StockDetailProps> = ({
                 {pendingOrders.map((order) => (
                   <div
                     key={order.id}
-                    className="bg-white border border-gray-100 rounded-2xl p-4 flex items-center justify-between"
+                    className="bg-white border border-gray-100 rounded-2xl p-4 flex items-center justify-between shadow-sm"
                   >
                     <div className="flex-1">
                       <div
-                        className={`text-sm font-black mb-1 ${
-                          order.type === "buy"
-                            ? "text-red-500"
-                            : "text-blue-500"
-                        }`}
+                        className={`text-sm font-black mb-1 ${order.type === "buy" ? "text-red-500" : "text-blue-500"}`}
                       >
                         {order.type === "buy" ? "매수" : "매도"}
                       </div>
                       <div className="text-xs text-gray-500 font-bold">
-                        {order.name} · {order.qty}주 · {order.price}원
+                        {order.qty}주 · {parseInt(order.price).toLocaleString()}
+                        원
+                      </div>
+                      <div className="text-[10px] text-gray-400 mt-1">
+                        {order.name}
                       </div>
                     </div>
                     <button
-                      onClick={() => cancelOrder(order.id)}
-                      className="p-2 bg-gray-100 rounded-full hover:bg-gray-200"
+                      onClick={() => handleCancelOrder(order.id)}
+                      className="px-3 py-1.5 bg-gray-100 rounded-lg text-xs font-bold text-gray-500 hover:bg-gray-200"
                     >
-                      <X size={16} className="text-gray-500" />
+                      취소
                     </button>
                   </div>
                 ))}
@@ -937,19 +1090,29 @@ const StockDetail: React.FC<StockDetailProps> = ({
             <div className="grid grid-cols-2 gap-3 mt-auto">
               <button
                 onClick={() => setIsTradeModalOpen(false)}
-                className="py-4 bg-gray-400 text-white rounded-xl font-black text-base"
+                disabled={isOrdering}
+                className="py-4 bg-gray-400 text-white rounded-xl font-black text-base disabled:opacity-50"
               >
                 취소
               </button>
               <button
                 onClick={executeOrder}
-                className={`py-4 text-white rounded-xl font-black text-base ${
+                disabled={isOrdering}
+                className={`py-4 text-white rounded-xl font-black text-base flex items-center justify-center ${
                   tradeTab === "buy"
-                    ? "bg-red-500 hover:bg-red-600"
-                    : "bg-blue-500 hover:bg-blue-600"
+                    ? "bg-red-500 hover:bg-red-600 disabled:bg-red-300"
+                    : "bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300"
                 }`}
               >
-                입력
+                {/* 주문 중이면 '처리중...' 표시 */}
+                {isOrdering ? (
+                  <span className="flex items-center gap-2">
+                    <span className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin" />
+                    처리중
+                  </span>
+                ) : (
+                  "입력"
+                )}
               </button>
             </div>
           </div>
@@ -1052,7 +1215,6 @@ const StockDetail: React.FC<StockDetailProps> = ({
       </div>
 
       {renderTradeModal()}
-      {renderNewsModal()}
     </div>
   );
 };

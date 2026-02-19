@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { TrendingUp, ChevronRight } from "lucide-react";
+import { TrendingUp, ChevronRight, ChevronUp } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 // API 주소
 const API_BASE_URL = "http://localhost:8000";
@@ -10,10 +11,17 @@ interface HotStock {
   price: string;
   change: string;
   isUp: boolean;
+  symbol: string;
 }
 
 const PopularStocks: React.FC = () => {
+  const navigate = useNavigate();
   const [stocks, setStocks] = useState<HotStock[]>([]);
+  const [visibleCount, setVisibleCount] = useState(5);
+  const handleShowMore = () => setVisibleCount(stocks.length);
+  const handleShowLess = () => setVisibleCount(5);
+  const visibleStocks = stocks.slice(0, visibleCount);
+  const hasMore = stocks.length > visibleCount;
 
   // 백엔드에서 실시간 랭킹 가져오기
   useEffect(() => {
@@ -39,6 +47,7 @@ const PopularStocks: React.FC = () => {
             price: `${Number(priceValue).toLocaleString()}원`,
             change: `${changeValue > 0 ? "+" : ""}${changeValue.toFixed(2)}%`,
             isUp: changeValue >= 0,
+            symbol: item.ticker || item.name || "",
           };
         });
 
@@ -49,14 +58,12 @@ const PopularStocks: React.FC = () => {
     };
 
     fetchHotRanking();
-    // 5초마다 랭킹 갱신 (실시간 느낌)
     const interval = setInterval(fetchHotRanking, 5000);
     return () => clearInterval(interval);
   }, []);
 
   return (
     <div className="flex flex-col h-full bg-[#E8F3EF] rounded-t-[2.5rem] border border-white/50 shadow-inner overflow-hidden">
-      {/* 헤더 디자인 */}
       <div className="p-5 pb-2">
         <div className="flex items-center space-x-2 text-[#2D8C69]">
           <div className="bg-white p-1.5 rounded-xl shadow-sm">
@@ -70,12 +77,10 @@ const PopularStocks: React.FC = () => {
           지금 사람들이 가장 많이 보고 있는 종목
         </p>
       </div>
-
-      {/* 리스트 영역 */}
       <div className="flex-1 overflow-y-auto px-5 hide-scrollbar pb-32">
         <div className="flex flex-col space-y-3 mt-3">
           {stocks.length > 0 ? (
-            stocks.map((stock) => {
+            visibleStocks.map((stock) => {
               let badgeClass = "bg-gray-100 text-gray-400";
               if (stock.rank === 1) {
                 badgeClass =
@@ -91,6 +96,7 @@ const PopularStocks: React.FC = () => {
               return (
                 <div
                   key={stock.rank}
+                  onClick={() => navigate(`/stock/${stock.symbol}`)}
                   className="bg-white rounded-2xl p-4 flex items-center justify-between shadow-sm border border-green-50/50 hover:border-green-200 transition-colors animate-in slide-in-from-bottom-2"
                 >
                   <div className="flex items-center space-x-3">
@@ -123,10 +129,27 @@ const PopularStocks: React.FC = () => {
             </div>
           )}
 
-          <button className="mt-1 w-full py-4 bg-white/70 hover:bg-white transition-all rounded-2xl flex items-center justify-center space-x-1 text-[#2D8C69] font-bold text-sm shadow-sm border border-white">
-            <span>전체 순위 보기</span>
-            <ChevronRight size={16} />
-          </button>
+          <div className="flex gap-2 mt-1">
+            {hasMore && (
+              <button
+                onClick={handleShowMore}
+                className="flex-1 py-4 bg-white/70 hover:bg-white transition-all rounded-2xl flex items-center justify-center space-x-1 text-[#2D8C69] font-bold text-sm shadow-sm border border-white"
+              >
+                <span>전체 순위 보기</span>
+                <ChevronRight size={16} />
+              </button>
+            )}
+
+            {visibleCount > 5 && (
+              <button
+                onClick={handleShowLess}
+                className="flex-1 py-4 bg-white/70 hover:bg-white transition-all rounded-2xl flex items-center justify-center space-x-1 text-[#2D8C69] font-bold text-sm shadow-sm border border-white"
+              >
+                <span>접기</span>
+                <ChevronUp size={16} />
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

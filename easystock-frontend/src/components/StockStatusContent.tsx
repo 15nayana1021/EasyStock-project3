@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { Leaf, ChevronRight } from "lucide-react";
+import { fetchAllOrders } from "../services/api";
 import StockDetail from "./StockDetail";
+import { useNavigate } from "react-router-dom";
 import {
   StockData,
   WatchlistItem,
@@ -24,6 +26,18 @@ interface StockStatusContentProps {
   transactions: TransactionItem[];
   onBuy: (stock: StockData, price: number, qty: number) => void;
   onSell: (stock: StockData, price: number, qty: number) => void;
+  virtualDate: string;
+}
+
+interface OrderHistoryItem {
+  id: number;
+  created_at: string;
+  company_name: string;
+  side: "BUY" | "SELL";
+  price: number;
+  quantity: number;
+  status: "FILLED" | "PENDING" | "CANCELLED";
+  game_date?: string;
 }
 
 const solutionData: SolutionItem[] = [
@@ -58,11 +72,98 @@ const StockStatusContent: React.FC<StockStatusContentProps> = ({
   transactions,
   onBuy,
   onSell,
+  virtualDate,
 }) => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<"status" | "history" | "solution">(
     "status",
   );
   const [selectedStock, setSelectedStock] = useState<StockData | null>(null);
+  const [historyFilter, setHistoryFilter] = useState<"ALL" | "BUY" | "SELL">(
+    "ALL",
+  );
+  const [orderHistory, setOrderHistory] = useState<OrderHistoryItem[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  React.useEffect(() => {
+    const loadHistory = async () => {
+      if (activeTab === "history") {
+        setLoading(true);
+        try {
+          const userId = localStorage.getItem("stocky_user_id") || "1";
+          const data = await fetchAllOrders(userId);
+          setOrderHistory(data);
+        } catch (error) {
+          console.error("거래 내역 로드 실패", error);
+        } finally {
+          setLoading(false);
+        }
+      }
+    };
+    loadHistory();
+  }, [activeTab]);
+
+  // 날짜별 그룹화 및 필터링 로직
+  const getGroupedHistory = () => {
+    // 1. 필터링 (기존 유지)
+    const filtered = orderHistory.filter((item) => {
+      if (historyFilter === "ALL") return true;
+      const side = item.side || (item as any).order_type;
+      return (
+        side === historyFilter ||
+        side === (historyFilter === "BUY" ? "매수" : "매도")
+      );
+    });
+
+    // 2. 날짜별 그룹화
+    const groups: { [date: string]: OrderHistoryItem[] } = {};
+
+    filtered.forEach((item) => {
+      // const dateObj = new Date(item.created_at);
+      // const dateKey = `${dateObj.getMonth() + 1}.${dateObj.getDate()} ...`;
+
+      const dateKey = item.game_date || virtualDate;
+
+      if (!groups[dateKey]) groups[dateKey] = [];
+      groups[dateKey].push(item);
+    });
+
+    return groups;
+  };
+
+  const groupedHistory = getGroupedHistory();
+  const sortedDates = Object.keys(groupedHistory).sort((a, b) =>
+    b.localeCompare(a),
+  );
+
+  // 헬퍼 함수들
+  const formatTime = (isoString: string) => {
+    const date = new Date(isoString);
+    return `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
+  };
+
+  const getStatusBadge = (status: string) => {
+    const s = String(status).toUpperCase();
+    if (s === "FILLED")
+      return (
+        <span className="bg-gray-100 text-gray-500 text-[10px] px-1.5 py-0.5 rounded font-bold">
+          체결
+        </span>
+      );
+    if (s === "PENDING")
+      return (
+        <span className="bg-orange-50 text-orange-500 text-[10px] px-1.5 py-0.5 rounded font-bold">
+          미체결
+        </span>
+      );
+    if (s === "CANCELLED")
+      return (
+        <span className="bg-red-50 text-red-400 text-[10px] px-1.5 py-0.5 rounded font-bold">
+          취소
+        </span>
+      );
+    return null;
+  };
 
   // 1. 주식 평가액 계산 (에러 방지 로직 포함)
   const stockValue = portfolio.reduce((acc, item) => {
@@ -114,19 +215,21 @@ const StockStatusContent: React.FC<StockStatusContentProps> = ({
         onBack={() => setSelectedStock(null)}
         onBuy={onBuy}
         onSell={onSell}
+        virtualDate={virtualDate}
       />
     );
   }
 
   const renderHistoryView = () => (
-    <div className="flex flex-col bg-[#F4F5FB] animate-in fade-in duration-300 pb-32">
-      <div className="bg-gradient-to-br from-[#40856C] to-[#2D8C69] p-6 pb-8 relative overflow-hidden rounded-b-[2rem]">
+    <div className="flex flex-col bg-[#F4F5FB] animate-in fade-in duration-300 pb-32 h-full">
+      {/* 1. 상단 헤더 (기존 디자인 유지) */}
+      <div className="bg-gradient-to-br from-[#40856C] to-[#2D8C69] p-6 pb-8 relative overflow-hidden rounded-b-[2rem] shrink-0">
         <div className="flex flex-col space-y-1 relative z-10">
-          <h2 className="text-2xl font-black text-white tracking-tight">
+          <h2 className="text-2xl font-black text-black tracking-tight">
             주식 거래 내역
           </h2>
-          <p className="text-xs font-bold text-white/70">
-            최근 보유 종목 거래 현황입니다.
+          <p className="text-xs font-bold text-black/70">
+            실시간 주문 및 체결 현황입니다.
           </p>
         </div>
         <div className="absolute right-4 top-4 text-white/10">
@@ -134,80 +237,107 @@ const StockStatusContent: React.FC<StockStatusContentProps> = ({
         </div>
       </div>
 
-      <div className="px-4 py-6 relative z-20">
-        <div className="bg-white rounded-[2rem] shadow-sm overflow-hidden border border-gray-100/50">
-          <div className="divide-y divide-gray-50">
-            {transactions.length > 0 ? (
-              transactions.map((item) => (
-                <div
-                  key={item.id}
-                  className="p-5 hover:bg-gray-50/50 transition-colors"
-                >
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center space-x-2">
-                      <span className="bg-[#E8F3EF] text-[#2D8C69] text-[10px] font-black px-2.5 py-1 rounded-full">
-                        거래완료
-                      </span>
-                      <span className="text-xs font-black text-gray-400">
-                        {item.type === "buy" ? "주식매수" : "주식매도"}
-                      </span>
-                    </div>
-                    <span className="text-[11px] font-bold text-gray-300">
-                      {item.date} {item.time}
-                    </span>
-                  </div>
+      {/* 2. 필터 버튼 (새로 추가됨) */}
+      <div className="px-6 mt-4 flex space-x-2 overflow-x-auto hide-scrollbar shrink-0">
+        {[
+          { id: "ALL", label: "전체" },
+          { id: "BUY", label: "매수" },
+          { id: "SELL", label: "매도" },
+        ].map((filter) => (
+          <button
+            key={filter.id}
+            onClick={() => setHistoryFilter(filter.id as any)}
+            className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all border ${
+              historyFilter === filter.id
+                ? "bg-gray-800 text-white border-gray-800 shadow-md"
+                : "bg-white text-gray-400 border-gray-200 hover:border-gray-300"
+            }`}
+          >
+            {filter.label}
+          </button>
+        ))}
+      </div>
 
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
-                      <div
-                        className={`w-12 h-12 rounded-2xl border border-gray-100 flex items-center justify-center p-2 bg-white shadow-sm overflow-hidden ${
-                          item.logoBg || ""
-                        }`}
-                      >
-                        {item.logoUrl ? (
-                          <img
-                            src={item.logoUrl}
-                            alt={item.name}
-                            className="w-full h-full object-contain"
-                          />
-                        ) : (
-                          <span
-                            className={`font-black text-xs ${
-                              item.logoBg ? "text-white" : "text-gray-600"
-                            }`}
-                          >
-                            {item.logoText}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex flex-col">
-                        <h3 className="text-lg font-black text-gray-800 leading-none mb-1">
-                          {item.name}
-                        </h3>
-                        <span className="text-[11px] font-bold text-gray-300">
-                          {item.qty} · {item.pricePerShare}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="text-right flex items-center space-x-1">
-                      <span
-                        className={`${
-                          item.type === "buy" ? "text-red-500" : "text-blue-500"
-                        } text-lg font-black tracking-tighter`}
-                      >
-                        {item.type === "buy" ? "" : "+"} {item.amount}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="p-10 text-center text-gray-400 font-bold text-sm">
-                거래 내역이 없습니다.
-              </div>
-            )}
+      {/* 3. 거래 내역 리스트 (진짜 데이터 연동) */}
+      <div className="px-4 py-4 flex-1 overflow-y-auto hide-scrollbar">
+        {loading ? (
+          <div className="text-center py-20 text-gray-400 text-xs">
+            로딩중...
           </div>
-        </div>
+        ) : orderHistory.length === 0 ? (
+          <div className="bg-white rounded-[2rem] p-10 flex flex-col items-center justify-center text-gray-400 shadow-sm border border-gray-50/50 min-h-[200px]">
+            <p className="text-sm font-bold">거래 내역이 없습니다.</p>
+          </div>
+        ) : (
+          <div className="space-y-6 pb-20">
+            {sortedDates.map((date) => (
+              <div
+                key={date}
+                className="animate-in slide-in-from-bottom-2 duration-500"
+              >
+                {/* 날짜 헤더 */}
+                <h3 className="text-xs font-bold text-gray-500 mb-2 ml-2 flex items-center">
+                  <span className="w-1.5 h-1.5 rounded-full bg-gray-300 mr-2"></span>
+                  {date}
+                </h3>
+
+                {/* 해당 날짜의 주문 카드들 */}
+                <div className="bg-white rounded-[1.5rem] shadow-sm border border-gray-100/50 overflow-hidden divide-y divide-gray-50">
+                  {groupedHistory[date].map((order) => {
+                    // 데이터 가공
+                    const side = order.side || (order as any).order_type;
+                    const isBuy =
+                      String(side).toUpperCase() === "BUY" || side === "매수";
+                    const isFilled = order.status === "FILLED";
+
+                    return (
+                      <div
+                        key={order.id}
+                        className="p-4 hover:bg-gray-50/50 transition-colors flex items-center justify-between"
+                      >
+                        {/* 왼쪽 정보 */}
+                        <div className="flex items-center space-x-3">
+                          {/* 매수/매도 아이콘 */}
+                          <div
+                            className={`w-10 h-10 rounded-2xl flex items-center justify-center shadow-sm ${isBuy ? "bg-red-50 text-red-500" : "bg-blue-50 text-blue-500"}`}
+                          >
+                            <span className="text-[10px] font-black">
+                              {isBuy ? "매수" : "매도"}
+                            </span>
+                          </div>
+
+                          <div>
+                            <div className="flex items-center space-x-2">
+                              <h3 className="text-sm font-black text-gray-800 leading-none">
+                                {order.company_name}
+                              </h3>
+                              {getStatusBadge(order.status)}
+                            </div>
+                            <span className="text-[11px] font-bold text-gray-400 mt-1 block">
+                              {order.quantity}주
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* 오른쪽 정보 (금액) */}
+                        <div className="text-right">
+                          <span className="text-sm font-black text-gray-800 block">
+                            {order.price.toLocaleString()}원
+                          </span>
+                          <span
+                            className={`text-[10px] font-bold ${isFilled ? "text-gray-400" : "text-orange-500"}`}
+                          >
+                            {isFilled ? "거래완료" : "체결대기"}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -310,7 +440,7 @@ const StockStatusContent: React.FC<StockStatusContentProps> = ({
             portfolio.map((item) => (
               <div
                 key={item.ticker}
-                onClick={() => setSelectedStock(item)}
+                onClick={() => navigate(`/stock/${item.ticker || item.name}`)}
                 className="bg-white rounded-[1.5rem] p-4 flex items-center justify-between shadow-sm border border-gray-50/50 cursor-pointer active:scale-[0.98] transition-all"
               >
                 <div className="flex items-center space-x-4">
@@ -365,7 +495,7 @@ const StockStatusContent: React.FC<StockStatusContentProps> = ({
             watchlist.map((item) => (
               <div
                 key={item.id}
-                onClick={() => setSelectedStock(item)}
+                onClick={() => navigate(`/stock/${item.name}`)}
                 className="bg-white rounded-[1.5rem] p-4 flex items-center justify-between shadow-sm border border-gray-50/50 cursor-pointer active:scale-[0.98] transition-all"
               >
                 <div className="flex items-center space-x-4">

@@ -7,6 +7,7 @@ import random
 from datetime import datetime
 import aiosqlite
 from pydantic import BaseModel
+from urllib.parse import unquote
 
 # 엔진과 모델 임포트
 
@@ -56,192 +57,168 @@ engine = MarketEngine()
 current_news_display = "장 시작 준비 중..."
 price_history = {ticker: [] for ticker in TARGET_TICKERS}
 current_mentor_comments = {ticker: [] for ticker in TARGET_TICKERS}
+news_history_storage = []
 
 
-# [시뮬레이션 엔진] - 봇 활동 + 사용자 주문 체결 처리(청산)
+# 시뮬레이션 엔진
 async def simulate_market_background():
     global current_news_display, price_history, current_mentor_comments
     
-    print("🚀 리얼 마켓 엔진 & 청산 시스템 가동!")
+    print("🚀 [시스템] 마켓 엔진 재가동 (가격 변동 ON / 자동 체결 OFF)")
     
-    # [Step 0] 멘토단 결성
-    real_ai_mode = False 
-    try:
-        from core.mentor_personas import MENTOR_PROFILES
-        real_ai_mode = True 
-        print(f"✅ Real AI 모드 활성화!")
-    except Exception as e:
-        print(f"⚠️ [경고] AI 설정 실패: {e}")
-
-    loop_count = 0
-    
-    # DB 연결 (WAL 모드)
+    # 1. DB 연결
     db = await aiosqlite.connect("stock_game.db", timeout=30.0)
     await db.execute("PRAGMA journal_mode=WAL;") 
-    db.row_factory = aiosqlite.Row 
+    db.row_factory = aiosqlite.Row
 
     try:
-        
-        
         for ticker in TARGET_TICKERS:
-            # DB 가격 동기화
             cursor = await db.execute("SELECT * FROM stocks WHERE company_name = ?", (ticker,))
             row = await cursor.fetchone()
-            
             
             if row:
                 start_price = row['current_price']
             else:
                 start_price = INITIAL_PRICES.get(ticker, 10000)
-
-            if not row:
                 await db.execute("INSERT OR IGNORE INTO stocks (symbol, company_name, current_price) VALUES (?, ?, ?)", 
                                     (ticker, ticker, start_price))
             
-            # 엔진 등록
+            # 엔진 메모리에 등록
             if ticker not in engine.companies:
                 from models.domain_models import Company
-                new_comp = Company(ticker=ticker, name=ticker, sector="Tech", description="Custom", current_price=float(start_price), total_shares=1000000)
+                sector = COMPANY_CATEGORIES.get(ticker, "기타")
+                
+                new_comp = Company(
+                    ticker=ticker, 
+                    name=ticker, 
+                    sector=sector,
+                    description=f"{ticker} 종목입니다.", 
+                    current_price=float(start_price), 
+                    total_shares=1000000,
+                    change_rate=0.0
+                )
                 engine.companies[ticker] = new_comp
                 engine.order_books[ticker] = {"BUY": [], "SELL": []}
-                print(f"⚙️ 엔진 등록: {ticker}")
 
         await db.commit()
+        print("✅ [시스템] 모든 종목 등록 완료!")
 
-        # [무한 루프] 봇 주문 + 사용자 체결 확인
+        # 2. 시초가 저장 (등락률 계산용)
+        start_prices = {} 
+        for ticker, info in engine.companies.items():
+            start_prices[ticker] = info.current_price
+
+        # 3. [무한 루프] 이제 장을 시작합니다!
+        loop_count = 0
         while True:
             await asyncio.sleep(1) 
             loop_count += 1
             
-            # 뉴스 로테이션
-            if loop_count % 10 == 0:
-                events = ["반도체 수요 폭발", "금리 동결 발표", "경쟁사 실적 부진", "특별한 이슈 없음", "신제품 출시 임박"]
-                current_news_display = random.choice(events)
+            # A. 등락률(Change Rate) 실시간 계산
+            for ticker in engine.companies:
+                current_price = engine.companies[ticker].current_price
+                start_price = start_prices.get(ticker, current_price)
+                
+                if start_price > 0:
+                    change_rate = ((current_price - start_price) / start_price) * 100
+                    engine.companies[ticker].change_rate = round(change_rate, 2)
 
+            # B. 뉴스 로테이션
+            # if loop_count % 30 == 0:
+            #     target_ticker = random.choice(TARGET_TICKERS)
+            
+            #     # 뉴스 템플릿 (상승/하락/일반)
+            #     news_templates = [
+            #         f"{target_ticker}, 차세대 핵심 기술 개발 성공 소식에 '강세'",
+            #         f"외국인, {target_ticker} 10일 연속 순매수... 주가 기대감↑",
+            #         f"{target_ticker}, 경쟁 심화 우려에 주가 소폭 하락세",
+            #         f"{target_ticker} 경영진, 자사주 매입 발표... 주주가치 제고",
+            #         f"[특징주] {target_ticker}, 3분기 실적 어닝 서프라이즈 달성",
+            #         f"{target_ticker}, 글로벌 파트너사와 대규모 공급 계약 체결"
+            #     ]
+                
+            #     news_templates = [
+            #         f"{target_ticker}, 차세대 핵심 기술 개발 성공",
+            #         f"외국인, {target_ticker} 10일 연속 순매수 행진",
+            #         f"{target_ticker}, 경쟁 심화 우려에 주가 숨고르기",
+            #         f"{target_ticker} 경영진, 주주가치 제고 위해 자사주 매입",
+            #         f"[특징주] {target_ticker}, 3분기 실적 호조 예상",
+            #         f"{target_ticker}, 글로벌 기업과 대규모 공급 계약 체결"
+            #     ]
+            #     title = random.choice(news_templates)
+            #     source = "Stocky News"
+            #     time_str = datetime.now().strftime("%m.%d %H:%M")
+
+            #     await db.execute("""
+            #         INSERT INTO news (ticker, title, source, created_at)
+            #         VALUES (?, ?, ?, ?)
+            #     """, (target_ticker, title, source, time_str))
+                
+            #     await db.commit()
+            #     print(f"📰 [DB 저장] {title}")
+
+            # C. 주가 변동 (랜덤 워크)
             for ticker in TARGET_TICKERS:
                 if ticker not in engine.companies: continue
                 
-                # 1. 봇(Bot)의 랜덤 주문 투입
                 current_p = engine.companies[ticker].current_price
-                bot_side = random.choice([OrderSide.BUY, OrderSide.SELL])
-                spread = random.randint(-500, 500)
+                spread = random.randint(-500, 500) 
                 order_price = int(current_p + spread)
                 if order_price < 10: order_price = 10
-                qty = random.randint(1, 5)
-
-                bot_order = Order(
-                    agent_id="Bot_Noise", ticker=ticker, side=bot_side,
-                    order_type=OrderType.LIMIT, quantity=qty, price=order_price
-                )
-                engine.place_order(bot_order)
-
-                if ticker in hot_scores:
-                    hot_scores[ticker] += 1
                 
-                # 2. 가격 변동 DB 반영
-                new_price = int(engine.companies[ticker].current_price)
-                if new_price != current_p:
-                    await db.execute("UPDATE stocks SET current_price = ? WHERE company_name = ?", (new_price, ticker))
+                # 엔진 & DB 업데이트
+                engine.companies[ticker].current_price = order_price
+                if ticker in hot_scores: hot_scores[ticker] += 1
+                
+                if order_price != current_p:
+                    await db.execute("UPDATE stocks SET current_price = ? WHERE company_name = ?", (order_price, ticker))
                     await db.commit()
-                    # 봇 체결 알림 (너무 많으면 주석 처리)
-                    # print(f"✨ [시장] {ticker} 현재가 {new_price}원으로 변경")
 
                 # 히스토리 저장
-                price_history[ticker].append({"time": datetime.now().strftime("%H:%M:%S"), "price": new_price})
+                price_history[ticker].append({"time": datetime.now().strftime("%H:%M:%S"), "price": order_price})
                 if len(price_history[ticker]) > 30: price_history[ticker].pop(0)
 
-                # 3. 멘토링 (삼송전자만 Real AI)
-                if real_ai_mode and ticker == "삼송전자" and (loop_count % 30 == 0):
-                    pass 
-                elif (loop_count % 5 == 0):
-                    # 무료 멘트
-                    comments_pool = [{"n": "시스템", "c": "거래량 분석 중...", "s": "value-box"}, {"n": "알림", "c": "변동성 확대 주의", "s": "momentum-box"}]
-                    if ticker != "삼송전자" or not current_mentor_comments[ticker]:
-                        current_mentor_comments[ticker] = random.sample(comments_pool, 1)
-
-            
-            # 사용자 주문 정산       
+            # D. 대기 주문(PENDING) 체결 처리
             async with db.execute("SELECT * FROM orders WHERE status = 'PENDING'") as cursor:
                 pending_orders = await cursor.fetchall()
 
             for db_order in pending_orders:
-                order_id = db_order['id']
+                o_id = db_order['id']
                 user_id = db_order['user_id']
-                target_ticker = db_order['company_name']
-                o_type = db_order['order_type']
-                qty = db_order['quantity']
+                ticker = db_order['company_name']
+                side = db_order['order_type']
                 price = db_order['price']
+                qty = db_order['quantity']
                 
-                # 엔진에서 내 주문 찾기
-                is_alive_in_engine = False
-                book = engine.order_books.get(target_ticker, {"BUY": [], "SELL": []})
-                
-                # 매수 주문이면 BUY 쪽, 매도면 SELL 쪽 확인
-                check_list = book["BUY"] if o_type == "BUY" else book["SELL"]
-                
-                for eng_order in check_list:
-                    if eng_order.agent_id == f"User_{user_id}" and eng_order.price == price:
-                        is_alive_in_engine = True
-                        break
-                
-                # 호가창에서 사라졌다? = 체결 완료 (FILLED)!
-                if not is_alive_in_engine:
-                    print(f"🎉 [체결 성공] 사용자 {user_id}님의 {target_ticker} 주문이 체결되었습니다!")
+                if ticker not in engine.companies: continue
+                current_market_price = engine.companies[ticker].current_price
 
-                    if target_ticker in hot_scores:
-                        before_score = hot_scores[target_ticker]
-                        hot_scores[target_ticker] += 50
+                # 체결 조건 확인
+                is_match = False
+                if side == "BUY" and current_market_price <= price: # 싸게 나오면 산다
+                    is_match = True
+                elif side == "SELL" and current_market_price >= price: # 비싸게 나오면 판다
+                    is_match = True
+                
+                if is_match:
+                        await db.execute("UPDATE orders SET status = 'FILLED' WHERE id = ?", (o_id,))
                         
-                        print(f"🚀 [떡상] '{target_ticker}' 유저 거래 발생! 점수 폭등: {before_score} -> {hot_scores[target_ticker]} (+50)")
-                    
-                    # 1. 주문 상태 변경
-                    await db.execute("UPDATE orders SET status = 'FILLED' WHERE id = ?", (order_id,))
-                    
-                    # 2. 자산 지급 (Step 3에서 이미 차감했으므로, 들어올 것만 주면 됨)
-                    if o_type == "BUY":
-                        # 매수 성공: 주식 지급
-                        await db.execute("""
-                            INSERT INTO holdings (user_id, company_name, quantity, average_price)
-                            VALUES (?, ?, ?, ?)
-                            ON CONFLICT(user_id, company_name) DO UPDATE SET quantity = quantity + ?, average_price = ?
-                        """, (user_id, target_ticker, qty, price, qty, price))
-                        
-                    elif o_type == "SELL":
-                        # 매도 성공: 현금 지급
-                        income = price * qty
-                        await db.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (income, user_id))
-
-                    # 3. 퀘스트 자동 달성 (보너스 + 경험치 지급)
-                    quest_name = "첫 매수 성공" if o_type == "BUY" else "첫 매도 성공"
-                    
-                    cursor = await db.execute("SELECT count(*) FROM user_quests WHERE user_id = ? AND quest_id = ?", (user_id, quest_name))
-                    
-                    if (await cursor.fetchone())[0] == 0:
-                            reward_cash = 500000 if o_type == "BUY" else 1000000
-                            
+                        if side == "BUY":
                             await db.execute("""
-                            INSERT INTO user_quests (user_id, quest_id, reward_amount, is_completed, completed_at) 
-                            VALUES (?, ?, ?, 1, datetime('now'))
-                            """, (user_id, quest_name, reward_cash))
+                                INSERT INTO holdings (user_id, company_name, quantity, average_price) 
+                                VALUES (?, ?, ?, ?) 
+                                ON CONFLICT(user_id, company_name) 
+                                DO UPDATE SET quantity = quantity + ?, average_price = (average_price * quantity + ? * ?) / (quantity + ?)
+                            """, (user_id, ticker, qty, price, qty, price, qty, qty))
                             
-                            await db.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (reward_cash, user_id))
-                            print(f"🎁 [퀘스트 완료] {quest_name}! 보상금 {reward_cash}원 지급")
+                        elif side == "SELL":
+                            income = price * qty
+                            await db.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (income, user_id))
 
-                            # (경험치 지급 로직 유지)
-                            try:
-                                from services.gamification import gain_exp
-                                xp_reward = 100 
-                                await gain_exp(user_id, xp_reward, db=db) 
-                                print(f"🆙 [성장] 퀘스트 보상으로 경험치 +{xp_reward} 획득!")
-                            except Exception as e:
-                                print(f"⚠️ [에러] 경험치 지급 중 문제 발생: {e}")
-
-                    await db.commit()
+                        print(f"🎉 [엔진 체결] {ticker} {qty}주 {side} 완료! (ID: {o_id})")
 
     except Exception as e:
-        print(f"❌ 시뮬레이션 치명적 에러: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"❌ 엔진 에러: {e}")
     finally:
         await db.close()
 
@@ -251,7 +228,7 @@ async def lifespan(app: FastAPI):
     await init_db()
     task = asyncio.create_task(simulate_market_background())
     yield
-    task.cancel()
+    #task.cancel()
 
 app = FastAPI(lifespan=lifespan)
 
@@ -358,7 +335,7 @@ async def login_user(request: LoginRequest):
             )
         """)
         
-        # 닉네임이 있으면 무시(IGNORE), 없으면 새로 만들고 100만원(1000000) 지급
+        # 닉네임이 있으면 무시(IGNORE), 없으면 새로 만들고 100만원 지급
         await db.execute("""
             INSERT OR IGNORE INTO users (username, balance) 
             VALUES (?, 1000000)
@@ -366,7 +343,15 @@ async def login_user(request: LoginRequest):
         
         await db.commit()
         
-    return {"success": True, "message": f"Welcome {request.nickname}!"}
+        cursor = await db.execute("SELECT id FROM users WHERE username = ?", (request.nickname,))
+        user_row = await cursor.fetchone()
+        real_user_id = user_row[0] if user_row else 1
+        
+    return {
+        "success": True, 
+        "message": f"Welcome {request.nickname}!", 
+        "user_id": real_user_id
+    }
 
 # 2. 내 자산 정보 API (프론트엔드 연동용)
 @app.get("/users/me/portfolio")
@@ -427,23 +412,70 @@ async def get_my_portfolio(user_id: str = "1"):
         "portfolio": portfolio
     }
 # 3. 종목 상세 조회 (프론트엔드 연동용)
-@app.get("/stocks/{ticker}")
+@app.get("/api/stocks/{ticker}")
 async def get_stock_detail(ticker: str):
     if ticker not in engine.companies:
         return {"error": "Stock not found"}
-    
     comp = engine.companies[ticker]
     return {
         "ticker": ticker,
         "name": ticker,
-        "sector": "Tech",
+        "sector": COMPANY_CATEGORIES.get(ticker, "Tech"),
         "current_price": int(comp.current_price),
     }
 
+# 2. 차트 데이터 API (프론트엔드 fetchStockChart 대응)
+@app.get("/api/stocks/{ticker}/chart")
+async def get_stock_chart(ticker: str, period: str = "1d"):
+    if ticker not in price_history:
+        return []
+    
+    # price_history에 저장된 데이터를 프론트엔드 형식에 맞춰 반환
+    # (time, price 형태의 리스트)
+    return price_history.get(ticker, [])
+
+# 3. 호가창 데이터 API (프론트엔드 fetchOrderBook 대응)
+@app.get("/api/stocks/{ticker}/orderbook")
+async def get_stock_orderbook(ticker: str):
+    if ticker not in engine.companies:
+        return {"error": "Stock not found"}
+    
+    comp = engine.companies[ticker]
+    book = engine.order_books.get(ticker, {"BUY": [], "SELL": []})
+    
+    return {
+        "ticker": ticker,
+        "current_price": int(comp.current_price),
+        "asks": book.get("SELL", [
+            {"price": int(comp.current_price + 100), "volume": 10},
+            {"price": int(comp.current_price + 200), "volume": 50}
+        ]),
+        "bids": book.get("BUY", [
+            {"price": int(comp.current_price - 100), "volume": 20},
+            {"price": int(comp.current_price - 200), "volume": 100}
+        ])
+    }
+
+@app.get("/api/stocks/{ticker}/news")
+async def get_stock_news(ticker: str):
+    decoded_ticker = unquote(ticker)
+    
+    async with aiosqlite.connect("stock_game.db") as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("""
+            SELECT id, ticker, title, source, created_at as time, category, content, summary 
+            FROM news 
+            WHERE ticker LIKE ? OR title LIKE ?
+            ORDER BY id DESC 
+            LIMIT 50
+        """, (f"%{decoded_ticker}%", f"%{decoded_ticker}%")) 
+        
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
 @app.get("/api/ranking/hot")
 def get_hot_ranking():
-    # 1. 랭킹 점수판(hot_scores)을 점수 높은 순으로 정렬
-    sorted_ranking = sorted(hot_scores.items(), key=lambda x: x[1], reverse=True)[:5]
+    sorted_ranking = sorted(hot_scores.items(), key=lambda x: x[1], reverse=True)[:12]
 
     response_data = []
     
@@ -475,6 +507,34 @@ def get_hot_ranking():
         })
             
     return response_data
+
+@app.get("/api/news")
+async def get_all_news():
+    async with aiosqlite.connect("stock_game.db") as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("""
+            SELECT id, ticker, title, source, created_at as time 
+            FROM news 
+            ORDER BY id DESC 
+            LIMIT 20
+        """)
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+# 시장(Market) 상세화면용: 특정 종목 뉴스만 가져옴
+@app.get("/api/stocks/{ticker}/news")
+async def get_stock_news(ticker: str):
+    async with aiosqlite.connect("stock_game.db") as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("""
+            SELECT id, ticker, title, source, created_at as time 
+            FROM news 
+            WHERE ticker = ? 
+            ORDER BY id DESC 
+            LIMIT 20
+        """, (ticker,))
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 

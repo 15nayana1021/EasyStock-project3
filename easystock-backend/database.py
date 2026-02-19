@@ -36,8 +36,8 @@ async def init_db():
         await db.execute("""
         CREATE TABLE IF NOT EXISTS user_quests (
             user_id INTEGER,
-            quest_id TEXT,          -- quest_name과 호환되도록 TEXT
-            is_completed INTEGER DEFAULT 0, -- 🔥 이 컬럼이 꼭 필요합니다!
+            quest_id TEXT,
+            is_completed INTEGER DEFAULT 0,
             completed_at TEXT,
             reward_amount INTEGER,
             PRIMARY KEY (user_id, quest_id)
@@ -53,6 +53,14 @@ async def init_db():
         try: 
             pass
         except: pass
+
+        try:
+            await db.execute("ALTER TABLE orders ADD COLUMN game_date TEXT")
+            print("📦 [DB 업데이트] game_date 컬럼이 추가되었습니다.")
+        except Exception:
+            pass
+
+        await db.commit()
 
         await db.execute("""
         CREATE TABLE IF NOT EXISTS holdings (

@@ -66,7 +66,7 @@ async def get_ranking():
         
         # 4. 랭킹 번호 매겨서 반환 (상위 10명만)
         result = []
-        for i, item in enumerate(ranking_list[:10], 1):
+        for i, item in enumerate(ranking_list[:100], 1):
             result.append({
                 "rank": i,
                 "username": item["username"],
@@ -82,18 +82,21 @@ async def get_ranking():
 
 # 레벨 및 경험치 조회 (기존 코드 그대로 유지)
 @router.get("/my-profile/{user_id}")
-async def get_my_profile(user_id: int):
+async def get_my_profile(user_id: str):
     conn = await get_db_connection()
     try:
         # 1. 내 정보 가져오기
-        async with conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)) as cursor:
+        async with conn.execute("SELECT * FROM users WHERE username = ?", (user_id,)) as cursor:
             user = await cursor.fetchone()
         
         if not user:
-            raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+            return None
 
         # 2. 완료한 퀘스트 개수 세기 (업적 점수용)
-        async with conn.execute("SELECT count(*) FROM user_quests WHERE user_id = ? AND is_completed = 1", (user_id,)) as cursor:
+        async with conn.execute(
+            "SELECT count(*) FROM user_quests WHERE user_id = (SELECT id FROM users WHERE username = ?) AND is_completed = 1", 
+            (user_id,)
+        ) as cursor:
             row = await cursor.fetchone()
             quest_count = row[0] if row else 0
 

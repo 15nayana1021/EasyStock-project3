@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { TrendingUp, ChevronRight } from "lucide-react";
+import { TrendingUp, ChevronDown, ChevronUp } from "lucide-react";
 import { fetchRanking } from "../services/api";
 
 interface RankUser {
@@ -14,9 +14,15 @@ interface RankUser {
 const RankingContent: React.FC = () => {
   const [rankingList, setRankingList] = useState<RankUser[]>([]);
   const [myRankInfo, setMyRankInfo] = useState<RankUser | null>(null);
+  const [visibleCount, setVisibleCount] = useState(5);
+  const handleShowMore = () => setVisibleCount((prev) => prev + 10);
+  const handleShowLess = () => setVisibleCount(5);
+
+  const visibleRankings = rankingList.slice(0, visibleCount);
+  const hasMore = rankingList.length > visibleCount;
 
   // 현재 접속 중인 내 닉네임 가져오기
-  const myNickname = localStorage.getItem("stocky_user_id") || "";
+  const myNickname = localStorage.getItem("stocky_nickname") || "투자자";
 
   useEffect(() => {
     const loadRanking = async () => {
@@ -56,7 +62,6 @@ const RankingContent: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full bg-[#E8F3EF] rounded-t-[2.5rem] border border-white/50 shadow-inner overflow-hidden">
-      {/* Header */}
       <div className="p-5 pb-2">
         <div className="flex items-center space-x-2 text-[#2D8C69]">
           <TrendingUp size={22} strokeWidth={3} />
@@ -68,10 +73,7 @@ const RankingContent: React.FC = () => {
           지금 사람들이 가장 많이 따라하고 있는 투자 고수
         </p>
       </div>
-
-      {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto px-5 hide-scrollbar pb-32">
-        {/* My Rank Card - 내 정보가 있을 때만 표시 */}
         {myRankInfo ? (
           <div className="relative mt-2 mb-6 animate-in slide-in-from-top-2">
             <div className="bg-[#2D8C69] rounded-[2rem] p-5 flex items-center justify-between shadow-lg shadow-green-900/10">
@@ -111,7 +113,7 @@ const RankingContent: React.FC = () => {
         {/* Ranking List */}
         <div className="space-y-3">
           {rankingList.length > 0 ? (
-            rankingList.map((user) => {
+            visibleRankings.map((user) => {
               let badgeStyle = "bg-gray-100 text-gray-400";
 
               if (user.rank === 1) {
@@ -172,12 +174,27 @@ const RankingContent: React.FC = () => {
             </div>
           )}
         </div>
+        <div className="flex gap-2 mt-1">
+          {hasMore && (
+            <button
+              onClick={handleShowMore}
+              className="flex-1 py-4 bg-white/70 hover:bg-white transition-all rounded-2xl flex items-center justify-center space-x-1 text-[#2D8C69] font-bold text-sm shadow-sm border border-white"
+            >
+              <span>더보기 ({rankingList.length - visibleCount}개 남음)</span>
+              <ChevronDown size={16} />
+            </button>
+          )}
 
-        {/* View All Button */}
-        <button className="mt-5 w-full py-4 bg-white/70 hover:bg-white transition-all rounded-2xl flex items-center justify-center space-x-1 text-[#2D8C69] font-bold text-sm shadow-sm border border-white">
-          <span>전체 순위 보기</span>
-          <ChevronRight size={16} />
-        </button>
+          {visibleCount > 5 && (
+            <button
+              onClick={handleShowLess}
+              className="flex-1 py-4 bg-white/70 hover:bg-white transition-all rounded-2xl flex items-center justify-center space-x-1 text-[#2D8C69] font-bold text-sm shadow-sm border border-white"
+            >
+              <span>접기</span>
+              <ChevronUp size={16} />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

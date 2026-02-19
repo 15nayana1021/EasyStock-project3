@@ -64,80 +64,80 @@ async def init_user(user: UserCreate, db: aiosqlite.Connection = Depends(get_db_
 
 
 # 3. 주식 매수 API (Transaction)
-@router.post("/buy")
-async def buy_stock(trade: TradeRequest, db: aiosqlite.Connection = Depends(get_db_connection)):
-    """
-    [매수 트랜잭션]
-    1. 잔액 확인 (balance) -> 2. 잔액 차감 -> 3. 주식 지급 -> 4. 경험치/퀘스트
-    """
-    total_cost = trade.price * trade.quantity
+# @router.post("/buy")
+# async def buy_stock(trade: TradeRequest, db: aiosqlite.Connection = Depends(get_db_connection)):
+#     """
+#     [매수 트랜잭션]
+#     1. 잔액 확인 (balance) -> 2. 잔액 차감 -> 3. 주식 지급 -> 4. 경험치/퀘스트
+#     """
+#     total_cost = trade.price * trade.quantity
     
-    try:
-        # 트랜잭션 시작
-        await db.execute("BEGIN IMMEDIATE") 
+#     try:
+#         # 트랜잭션 시작
+#         await db.execute("BEGIN IMMEDIATE") 
         
-        # 1. 잔액 확인
-        cursor = await db.execute("SELECT balance FROM users WHERE id = ?", (trade.user_id,))
-        row = await cursor.fetchone()
+#         # 1. 잔액 확인
+#         cursor = await db.execute("SELECT balance FROM users WHERE id = ?", (trade.user_id,))
+#         row = await cursor.fetchone()
         
-        if not row:
-            raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다.")
+#         if not row:
+#             raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다.")
         
-        balance_amount = row[0]
+#         balance_amount = row[0]
         
-        if balance_amount < total_cost:
-            raise HTTPException(status_code=400, detail="잔액이 부족합니다.")
+#         if balance_amount < total_cost:
+#             raise HTTPException(status_code=400, detail="잔액이 부족합니다.")
 
-        # 2. 잔액 차감
-        new_balance = balance_amount - total_cost
-        await db.execute("UPDATE users SET balance = ? WHERE id = ?", (new_balance, trade.user_id))
+#         # 2. 잔액 차감
+#         new_balance = balance_amount - total_cost
+#         await db.execute("UPDATE users SET balance = ? WHERE id = ?", (new_balance, trade.user_id))
 
-        # 3. 주식 보유량 업데이트
-        cursor = await db.execute("SELECT quantity, average_price FROM holdings WHERE user_id = ? AND company_name = ?", (trade.user_id, trade.company_name))
-        holding = await cursor.fetchone()
+#         # 3. 주식 보유량 업데이트
+#         cursor = await db.execute("SELECT quantity, average_price FROM holdings WHERE user_id = ? AND company_name = ?", (trade.user_id, trade.company_name))
+#         holding = await cursor.fetchone()
         
-        if holding:
-            # 추가 매수
-            old_qty, old_avg = holding
-            new_qty = old_qty + trade.quantity
-            new_avg = ((old_qty * old_avg) + total_cost) / new_qty
-            await db.execute("UPDATE holdings SET quantity = ?, average_price = ? WHERE user_id = ? AND company_name = ?", (new_qty, new_avg, trade.user_id, trade.company_name))
-        else:
-            # 신규 매수
-            await db.execute("INSERT INTO holdings (user_id, company_name, quantity, average_price) VALUES (?, ?, ?, ?)", (trade.user_id, trade.company_name, trade.quantity, trade.price))
+#         if holding:
+#             # 추가 매수
+#             old_qty, old_avg = holding
+#             new_qty = old_qty + trade.quantity
+#             new_avg = ((old_qty * old_avg) + total_cost) / new_qty
+#             await db.execute("UPDATE holdings SET quantity = ?, average_price = ? WHERE user_id = ? AND company_name = ?", (new_qty, new_avg, trade.user_id, trade.company_name))
+#         else:
+#             # 신규 매수
+#             await db.execute("INSERT INTO holdings (user_id, company_name, quantity, average_price) VALUES (?, ?, ?, ?)", (trade.user_id, trade.company_name, trade.quantity, trade.price))
 
-        await db.commit()
-        try:   
-            # 2. '첫 주식 매수' 퀘스트 체크
-            await check_quest(trade.user_id, "trade_first")
-        except Exception as e:
-            print(f"⚠️ 보상 지급 중 에러 발생: {e}")
+#         await db.commit()
+#         try:   
+#             # 2. '첫 주식 매수' 퀘스트 체크
+#             await check_quest(trade.user_id, "trade_first")
+#         except Exception as e:
+#             print(f"⚠️ 보상 지급 중 에러 발생: {e}")
 
-        return {"message": "매수 체결 완료!", "balance": new_balance}
+#         return {"message": "매수 체결 완료!", "balance": new_balance}
 
-    except Exception as e:
-        await db.rollback()
-        raise e
+#     except Exception as e:
+#         await db.rollback()
+#         raise e
 
-        # 4. 거래 원장(Ledger) 기록
-        await db.execute("""
-            INSERT INTO transactions (user_id, transaction_type, amount, balance_after, description)
-            VALUES (?, 'BUY', ?, ?, ?)
-        """, (trade.user_id, -total_cost, new_balance, f"{trade.company_name} {trade.quantity}주 매수"))
+#         # 4. 거래 원장(Ledger) 기록
+#         await db.execute("""
+#             INSERT INTO transactions (user_id, transaction_type, amount, balance_after, description)
+#             VALUES (?, 'BUY', ?, ?, ?)
+#         """, (trade.user_id, -total_cost, new_balance, f"{trade.company_name} {trade.quantity}주 매수"))
         
-        # 승인 (Commit)
-        await db.commit()
+#         # 승인 (Commit)
+#         await db.commit()
         
-        return {
-            "status": "success", 
-            "message": f"{trade.company_name} 매수 성공!", 
-            "balance": new_balance,
-            "holdings": {"company": trade.company_name, "quantity": trade.quantity}
-        }
+#         return {
+#             "status": "success", 
+#             "message": f"{trade.company_name} 매수 성공!", 
+#             "balance": new_balance,
+#             "holdings": {"company": trade.company_name, "quantity": trade.quantity}
+#         }
 
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(status_code=500, detail=f"거래 실패: {str(e)}")
+#     except Exception as e:
+#         await db.rollback()
+#         raise HTTPException(status_code=500, detail=f"거래 실패: {str(e)}")
 
 # 4. 내 정보(잔액) 조회 API
 @router.get("/user/{user_id}")
@@ -218,83 +218,83 @@ async def give_reward(reward: RewardRequest, db: aiosqlite.Connection = Depends(
 
 
 # 6. 주식 매도 API (Sell)
-@router.post("/sell")
-async def sell_stock(trade: TradeRequest, db: aiosqlite.Connection = Depends(get_db_connection)):
-    """
-    [매도 트랜잭션]
-    1. 보유 주식 확인
-    2. 주식 차감
-    3. 잔액 증가
-    4. 거래 장부 기록 (transactions 테이블)
-    5. 경험치 및 퀘스트 보상 지급 (New!)
-    """
-    total_income = trade.price * trade.quantity
+# @router.post("/sell")
+# async def sell_stock(trade: TradeRequest, db: aiosqlite.Connection = Depends(get_db_connection)):
+#     """
+#     [매도 트랜잭션]
+#     1. 보유 주식 확인
+#     2. 주식 차감
+#     3. 잔액 증가
+#     4. 거래 장부 기록 (transactions 테이블)
+#     5. 경험치 및 퀘스트 보상 지급 (New!)
+#     """
+#     total_income = trade.price * trade.quantity
     
-    try:
-        await db.execute("BEGIN IMMEDIATE")
+#     try:
+#         await db.execute("BEGIN IMMEDIATE")
 
-        # 1. 내 주식고(Holdings) 확인
-        cursor = await db.execute("""
-            SELECT quantity, average_price 
-            FROM holdings 
-            WHERE user_id = ? AND company_name = ?
-        """, (trade.user_id, trade.company_name))
+#         # 1. 내 주식고(Holdings) 확인
+#         cursor = await db.execute("""
+#             SELECT quantity, average_price 
+#             FROM holdings 
+#             WHERE user_id = ? AND company_name = ?
+#         """, (trade.user_id, trade.company_name))
         
-        holding = await cursor.fetchone()
+#         holding = await cursor.fetchone()
         
-        # 주식이 아예 없거나, 팔려는 개수보다 적게 가지고 있다면?
-        if not holding or holding[0] < trade.quantity:
-            raise HTTPException(status_code=400, detail="매도할 주식이 부족합니다.")
+#         # 주식이 아예 없거나, 팔려는 개수보다 적게 가지고 있다면?
+#         if not holding or holding[0] < trade.quantity:
+#             raise HTTPException(status_code=400, detail="매도할 주식이 부족합니다.")
 
-        current_qty = holding[0]
+#         current_qty = holding[0]
         
-        # 2. 주식 수량 차감
-        new_qty = current_qty - trade.quantity
+#         # 2. 주식 수량 차감
+#         new_qty = current_qty - trade.quantity
         
-        await db.execute("""
-            UPDATE holdings SET quantity = ? 
-            WHERE user_id = ? AND company_name = ?
-        """, (new_qty, trade.user_id, trade.company_name))
+#         await db.execute("""
+#             UPDATE holdings SET quantity = ? 
+#             WHERE user_id = ? AND company_name = ?
+#         """, (new_qty, trade.user_id, trade.company_name))
 
-        # 3. 유저 잔액 증가 (돈 받기)
-        cursor = await db.execute("SELECT balance FROM users WHERE id = ?", (trade.user_id,))
-        row = await cursor.fetchone()
+#         # 3. 유저 잔액 증가 (돈 받기)
+#         cursor = await db.execute("SELECT balance FROM users WHERE id = ?", (trade.user_id,))
+#         row = await cursor.fetchone()
         
-        if not row:
-            raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다.")
+#         if not row:
+#             raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다.")
 
-        balance = row[0]
-        new_balance = balance + total_income
+#         balance = row[0]
+#         new_balance = balance + total_income
         
-        await db.execute("UPDATE users SET balance = ? WHERE id = ?", (new_balance, trade.user_id))
+#         await db.execute("UPDATE users SET balance = ? WHERE id = ?", (new_balance, trade.user_id))
 
-        # 4. 거래 원장(Ledger) 기록
-        await db.execute("""
-            INSERT INTO transactions (user_id, transaction_type, amount, balance_after, description)
-            VALUES (?, 'SELL', ?, ?, ?)
-        """, (trade.user_id, total_income, new_balance, f"{trade.company_name} {trade.quantity}주 매도"))
+#         # 4. 거래 원장(Ledger) 기록
+#         await db.execute("""
+#             INSERT INTO transactions (user_id, transaction_type, amount, balance_after, description)
+#             VALUES (?, 'SELL', ?, ?, ?)
+#         """, (trade.user_id, total_income, new_balance, f"{trade.company_name} {trade.quantity}주 매도"))
 
-        await db.commit()
+#         await db.commit()
         
-        try:
-            await check_quest(trade.user_id, "trade_sell_first")
+#         try:
+#             await check_quest(trade.user_id, "trade_sell_first")
             
-        except Exception as e:
-            print(f"⚠️ 보상 지급 중 에러 발생: {e}")
+#         except Exception as e:
+#             print(f"⚠️ 보상 지급 중 에러 발생: {e}")
 
-        return {
-            "status": "success",
-            "message": f"{trade.company_name} {trade.quantity}주 매도 완료!",
-            "balance": new_balance,
-            "holdings": {"company": trade.company_name, "remaining_quantity": new_qty}
-        }
+#         return {
+#             "status": "success",
+#             "message": f"{trade.company_name} {trade.quantity}주 매도 완료!",
+#             "balance": new_balance,
+#             "holdings": {"company": trade.company_name, "remaining_quantity": new_qty}
+#         }
 
-    except HTTPException as he:
-        await db.rollback()
-        raise he
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(status_code=500, detail=f"매도 실패: {str(e)}")
+#     except HTTPException as he:
+#         await db.rollback()
+#         raise he
+#     except Exception as e:
+#         await db.rollback()
+#         raise HTTPException(status_code=500, detail=f"매도 실패: {str(e)}")
 
 
 # 7. 지정가 주문 시스템 (Limit Order)
@@ -303,101 +303,115 @@ class OrderRequest(BaseModel):
     user_id: int
     ticker: str = None
     company_name: str = None
-    order_type: str  
+    order_type: str
+    side: str = None
     price: int
     quantity: int
+    game_date: str = None
 
 @router.post("/order")
 async def place_order(req: OrderRequest):
-    """
-    사용자의 주문을 DB에 저장하고, 동시에 '진짜 엔진'으로 전송합니다.
-    """
+    # 1. 기본 설정
     target_ticker = req.ticker if req.ticker else req.company_name
-    
-    # 안전장치: 종목명이 아예 없으면 에러
-    if not target_ticker:
-        raise HTTPException(status_code=400, detail="종목명(ticker)이 필요합니다.")
+    side = req.side.upper() if req.side else "BUY"
 
-    db = await get_db_connection()
-    try:
-        # 1. 유효성 및 자산 검증
-        if req.price <= 0 or req.quantity <= 0:
-            raise HTTPException(status_code=400, detail="가격과 수량은 양수여야 합니다.")
+    async with aiosqlite.connect("stock_game.db", timeout=30.0) as db:
+        db.row_factory = aiosqlite.Row
 
-        if req.order_type == "BUY":
-            total_cost = req.price * req.quantity
-            cursor = await db.execute("SELECT balance FROM users WHERE id = ?", (req.user_id,))
-            row = await cursor.fetchone()
-            if not row or row['balance'] < total_cost:
-                raise HTTPException(status_code=400, detail="현금이 부족합니다.")
-            
-            # 매수: 미리 돈 차감 (Locking)
-            new_balance = row['balance'] - total_cost
-            await db.execute("UPDATE users SET balance = ? WHERE id = ?", (new_balance, req.user_id))
-                
-        elif req.order_type == "SELL":
-            cursor = await db.execute("SELECT quantity FROM holdings WHERE user_id = ? AND company_name = ?", (req.user_id, target_ticker))
-            row = await cursor.fetchone()
-            if not row or row['quantity'] < req.quantity:
-                raise HTTPException(status_code=400, detail="보유 주식이 부족합니다.")
-            
-            # 매도: 미리 주식 차감 (Locking)
-            new_qty = row['quantity'] - req.quantity
-            await db.execute("UPDATE holdings SET quantity = ? WHERE user_id = ? AND company_name = ?", (new_qty, req.user_id, target_ticker))
-
-        # 2. DB에 'PENDING' 상태로 저장
-        cursor = await db.execute("""
-            INSERT INTO orders (user_id, company_name, order_type, price, quantity, status)
-            VALUES (?, ?, ?, ?, ?, 'PENDING')
-            RETURNING id
-        """, (req.user_id, target_ticker, req.order_type, req.price, req.quantity))
-        
-        order_row = await cursor.fetchone()
-        new_order_id = order_row[0]
-        await db.commit()
-        
         try:
-            from main import engine
+            # 2. 현재가 조회
+            current_market_price = None
+            try:
+                cursor = await db.execute("SELECT current_price FROM stocks WHERE symbol = ?", (target_ticker,))
+                row = await cursor.fetchone()
+                if row: current_market_price = row['current_price']
+                else:
+                    cursor = await db.execute("SELECT price FROM stocks WHERE symbol = ?", (target_ticker,))
+                    row = await cursor.fetchone()
+                    current_market_price = row['price'] if row else None
+            except: pass
+
+            # 3. 체결 조건 계산 (시장가 vs 지정가)
+            is_immediate_fill = False
+            if req.order_type == "MARKET":
+                is_immediate_fill = True
+                if current_market_price: req.price = current_market_price 
+            elif current_market_price:
+                if side == "BUY" and req.price >= current_market_price: is_immediate_fill = True
+                elif side == "SELL" and req.price <= current_market_price: is_immediate_fill = True
+
+            # 자산 선 차감 로직 (미체결이어도 돈/주식 먼저 뺌)
+            total_amount = req.price * req.quantity
             
-            side = OrderSide.BUY if req.order_type == "BUY" else OrderSide.SELL
+            if side == "BUY":
+                # 현금 확인
+                cursor = await db.execute("SELECT balance FROM users WHERE id = ?", (req.user_id,))
+                user = await cursor.fetchone()
+                if not user or user['balance'] < total_amount:
+                    return {"success": False, "msg": "현금이 부족합니다."}
+                
+                # 돈을 먼저 뺍니다! (PENDING 상태여도 차감됨)
+                await db.execute("UPDATE users SET balance = balance - ? WHERE id = ?", (total_amount, req.user_id))
+
+            elif side == "SELL":
+                # 주식 확인
+                cursor = await db.execute("SELECT quantity FROM holdings WHERE user_id = ? AND company_name = ?", (req.user_id, target_ticker))
+                holding = await cursor.fetchone()
+                if not holding or holding['quantity'] < req.quantity:
+                    return {"success": False, "msg": "보유 주식이 부족합니다."}
+                
+                # 주식을 먼저 뺍니다!
+                await db.execute("UPDATE holdings SET quantity = quantity - ? WHERE user_id = ? AND company_name = ?", (req.quantity, req.user_id, target_ticker))
+
+
+            # 5. 즉시 체결(FILLED) 시 후처리 (이미 뺀 자산 말고, 받을 자산만 지급)
+            status = "PENDING"
+            msg = "주문이 접수되었습니다. (미체결)"
+
+            if is_immediate_fill:
+                if side == "BUY":
+                    # 돈은 이미 뺐으니 주식만 넣어줌
+                    cursor = await db.execute("SELECT quantity FROM holdings WHERE user_id = ? AND company_name = ?", (req.user_id, target_ticker))
+                    holding = await cursor.fetchone()
+                    if holding:
+                        await db.execute("UPDATE holdings SET quantity = quantity + ? WHERE user_id = ? AND company_name = ?", (req.quantity, req.user_id, target_ticker))
+                    else:
+                        await db.execute("INSERT INTO holdings (user_id, company_name, quantity, average_price) VALUES (?, ?, ?, ?)", (req.user_id, target_ticker, req.quantity, req.price))
+                
+                elif side == "SELL":
+                    # 주식은 이미 뺐으니 돈만 넣어줌
+                    await db.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (total_amount, req.user_id))
+
+                status = "FILLED"
+                msg = "즉시 체결 완료!"
+
+            # 6. 주문 기록 저장
+            await db.execute("""
+                INSERT INTO orders (user_id, company_name, order_type, price, quantity, status, game_date, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """, (req.user_id, target_ticker, side, req.price, req.quantity, status, req.game_date))
             
-            user_order = Order(
-                agent_id=f"User_{req.user_id}",
-                ticker=target_ticker,
-                side=side,
-                order_type=OrderType.LIMIT,
-                quantity=req.quantity,
-                price=req.price
-            )
+            order_id = cursor.lastrowid
+            await db.commit()
             
-            engine.place_order(user_order)
-            print(f"🙋‍♂️ [사용자 주문] {target_ticker} {req.order_type} {req.quantity}주 @ {req.price}원 -> 엔진 전송 완료!")
+            return {"success": True, "status": status, "msg": msg, "order_id": order_id}
 
         except Exception as e:
-            print(f"⚠️ [전송 실패] 엔진 에러: {e}")
+            print(f"🔥 주문 오류: {e}")
+            return {"success": False, "msg": f"서버 오류: {str(e)}"}
 
-        return {"status": "success", "order_id": new_order_id, "msg": "주문이 정상 접수되었습니다."}
-
-    except HTTPException as e:
-        await db.rollback()
-        raise e
-    except Exception as e:
-        await db.rollback()
-        print(f"❌ 주문 에러: {e}")
-        raise HTTPException(status_code=500, detail="서버 에러")
-    finally:
-        await db.close()
 @router.get("/orders/{user_id}")
 async def get_my_orders(user_id: int, db: aiosqlite.Connection = Depends(get_db_connection)):
     """
     [내 주문 내역 조회] 
-    반드시 '아직 체결되지 않은(PENDING)' 주문만 가져와야 합니다.
+    전체 상태(FILLED, PENDING, CANCELLED)를 모두 가져와야 체결 감시가 가능합니다.
     """
     cursor = await db.execute("""
         SELECT id, company_name, order_type, price, quantity, created_at, status
         FROM orders 
-        WHERE user_id = ? AND status = 'PENDING' 
+        WHERE user_id = ? 
         ORDER BY created_at DESC
+        LIMIT 20
     """, (user_id,))
     
     rows = await cursor.fetchall()
@@ -564,3 +578,33 @@ async def get_order_book(
         "asks": [{"price": 81000, "qty": 10}, {"price": 82000, "qty": 50}], # 팔려는 사람
         "bids": [{"price": 79000, "qty": 20}, {"price": 78000, "qty": 100}] # 살려는 사람
     }
+
+@router.get("/orders/all/{user_id}")
+async def get_all_orders_all(user_id: int, db: aiosqlite.Connection = Depends(get_db_connection)):
+    cursor = await db.execute("""
+        SELECT id, company_name, order_type as side, price, quantity, status, game_date, created_at
+        FROM orders 
+        WHERE user_id = ?
+        ORDER BY created_at DESC
+        LIMIT 50
+    """, (user_id,))
+    rows = await cursor.fetchall()
+    return [dict(row) for row in rows]
+
+@router.get("/companies")
+def get_companies():
+    result = []
+    for ticker, info in engine.companies.items():
+        rate = getattr(info, "change_rate", 0.0)
+        
+        result.append({
+            "name": info.name,
+            "symbol": info.symbol,
+            "price": info.current_price,
+            "badge": info.badge,
+            
+            # 프론트엔드로 보낼 등락률 데이터
+            "change_rate": rate, 
+            "change_text": f"{rate}%"
+        })
+    return result

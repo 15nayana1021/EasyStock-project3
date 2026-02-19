@@ -13,6 +13,10 @@ export interface Company {
 export interface ChartDataPoint {
   time: string;
   price: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  close?: number;
 }
 
 export interface PortfolioItem {
@@ -40,12 +44,12 @@ export interface NewsItem {
   category: string;
   source?: string;
   published_at?: string;
+  display_date?: string;
 }
 
 // --- API 함수 ---
 
 // 1. 기업 목록 조회 (GET /stocks)
-// main.py의 실시간 엔진 가격을 가져옵니다.
 export const fetchCompanies = async (): Promise<StockData[]> => {
   try {
     // 1. 백엔드 API 호출 (주소에 /api 추가됨)
@@ -60,10 +64,8 @@ export const fetchCompanies = async (): Promise<StockData[]> => {
 
     // 3. 백엔드 데이터를 프론트엔드 UI 형식에 맞게 변환 (Mapping)
     return data.map((stock: any, index: number) => {
-      // 숫자인 가격을 '172,000원' 형태로 변환
       const formattedPrice = stock.price.toLocaleString() + "원";
 
-      // 등락률에 따른 색상/기호 결정
       const isUp = stock.change_rate >= 0;
       const displayChange =
         (isUp ? "+" : "") + stock.change_rate.toFixed(2) + "%";
@@ -79,7 +81,6 @@ export const fetchCompanies = async (): Promise<StockData[]> => {
       };
     });
   } catch (error) {
-    // 에러 발생 시 콘솔에 찍고 빈 배열 반환 (앱이 멈추지 않게 함)
     console.error("Failed to fetch companies:", error);
     return [];
   }
@@ -87,11 +88,11 @@ export const fetchCompanies = async (): Promise<StockData[]> => {
 
 // 2. 내 자산 정보 조회 (GET /users/me/portfolio)
 export const fetchMyPortfolio = async (userId: string = "1") => {
-  // 기본값 "1"
   try {
-    // URL에 user_id 쿼리 파라미터를 붙여서 보냅니다.
+    const safeUserId = parseInt(userId) || 1;
+
     const response = await fetch(
-      `${BASE_URL}/users/me/portfolio?user_id=${userId}`,
+      `${BASE_URL}/users/me/portfolio?user_id=${safeUserId}`,
     );
     if (!response.ok) throw new Error("Failed to fetch portfolio");
     return await response.json();
@@ -113,9 +114,8 @@ export const fetchNewsList = async (): Promise<NewsItem[]> => {
   }
 };
 
-// 3. 뉴스 상세내용
+// 3-1. 뉴스 상세내용
 export const fetchNewsDetail = async (id: number): Promise<NewsItem> => {
-  // 백엔드의 상세 조회 API 호출 (경로 주의: /news/123)
   const response = await fetch(`${BASE_URL}/api/news/${id}`, {
     method: "GET",
     headers: {
@@ -131,6 +131,33 @@ export const fetchNewsDetail = async (id: number): Promise<NewsItem> => {
   return response.json();
 };
 
+// 3-2. 주식 상세 화면용 (특정 종목 뉴스만)
+export const fetchStockNews = async (ticker: string) => {
+  try {
+    if (!ticker) return [];
+
+    const encodedTicker = encodeURIComponent(ticker);
+    console.log(`[API 요청] 뉴스 조회: ${ticker} -> ${encodedTicker}`);
+
+    const response = await fetch(
+      `${BASE_URL}/api/stocks/${encodedTicker}/news`,
+    );
+
+    if (!response.ok) {
+      console.error("API 응답 에러:", response.status);
+      return [];
+    }
+
+    const data = await response.json();
+    console.log(`[API 응답] ${ticker} 뉴스 ${data.length}개 수신됨`);
+
+    return data;
+  } catch (error) {
+    console.error("종목 뉴스 로딩 실패", error);
+    return [];
+  }
+};
+
 // 4. 주식 주문 (POST /api/trade/order)
 export const placeOrder = async (
   ticker: string,
@@ -138,18 +165,21 @@ export const placeOrder = async (
   price: number,
   quantity: number,
   userId: string = "1",
+  gameDate: string,
 ) => {
   try {
+    const safeUserId = parseInt(userId) || 1;
     const response = await fetch(`${BASE_URL}/api/trade/order`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        user_id: userId,
+        user_id: parseInt(userId) || 1,
         ticker: ticker,
         side: side,
         quantity: quantity,
         price: price,
         order_type: "LIMIT",
+        game_date: gameDate,
       }),
     });
     return await response.json();
@@ -166,7 +196,7 @@ export const fetchStockChart = async (
 ): Promise<ChartDataPoint[]> => {
   try {
     const response = await fetch(
-      `${BASE_URL}/stocks/${ticker}/chart?period=${period}`,
+      `${BASE_URL}/api/stocks/${ticker}/chart?period=${period}`,
     );
     if (!response.ok) return [];
     return await response.json();
@@ -194,11 +224,12 @@ export const loginUser = async (nickname: string) => {
 // 6. 호가(주문창) 데이터 조회 (GET /stocks/{ticker}/orderbook)
 export const fetchOrderBook = async (ticker: string) => {
   try {
-    const response = await fetch(`${BASE_URL}/stocks/${ticker}/orderbook`);
-    if (!response.ok) throw new Error("Failed to fetch orderbook");
+    const response = await fetch(`${BASE_URL}/api/stocks/${ticker}/orderbook`);
+    if (!response.ok) {
+      return null;
+    }
     return await response.json();
   } catch (error) {
-    console.error("Failed to fetch orderbook:", error);
     return null;
   }
 };
@@ -211,6 +242,68 @@ export const fetchRanking = async () => {
     return await response.json();
   } catch (error) {
     console.error("Failed to fetch ranking:", error);
+    return [];
+  }
+};
+
+// 8. 내 프로필(레벨) 정보 조회
+export const fetchMyProfile = async (userId: string = "1") => {
+  try {
+    const safeUserId = parseInt(userId) || 1;
+
+    const response = await fetch(
+      `${BASE_URL}/api/social/my-profile/${safeUserId}`,
+    );
+
+    if (!response.ok) {
+      return null;
+    }
+
+    return await response.json();
+  } catch (error) {
+    return null;
+  }
+};
+
+// 9. 내 주문 내역 가져오기 (미체결 확인용)
+export const fetchMyOrders = async (userId: string) => {
+  try {
+    const safeUserId = parseInt(userId) || 1;
+
+    const response = await fetch(`${BASE_URL}/api/trade/orders/${safeUserId}`);
+    if (!response.ok) throw new Error("주문 내역 조회 실패");
+    return await response.json();
+  } catch (error) {
+    console.error("주문 내역 로딩 에러:", error);
+    return [];
+  }
+};
+
+// 10. 주문 취소하기 (미체결 탭에서 사용)
+export const cancelOrder = async (orderId: number) => {
+  try {
+    const response = await fetch(`${BASE_URL}/api/trade/order/${orderId}`, {
+      method: "DELETE",
+    });
+    return await response.json();
+  } catch (error) {
+    console.error("주문 취소 실패:", error);
+    return { success: false };
+  }
+};
+
+export const fetchAllOrders = async (userId: string) => {
+  try {
+    const response = await fetch(
+      `${BASE_URL}/api/trade/orders/all/${userId}?t=${Date.now()}`,
+    );
+
+    if (!response.ok) {
+      return [];
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("주문 내역 로딩 실패", error);
     return [];
   }
 };

@@ -8,6 +8,7 @@ interface HeaderProps {
   onMarkAsRead: () => void;
   nickname?: string;
   level?: number;
+  virtualDate?: string;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -16,6 +17,7 @@ const Header: React.FC<HeaderProps> = ({
   onMarkAsRead,
   nickname,
   level,
+  virtualDate,
 }) => {
   // Using a placeholder image that resembles the requested squirrel character
   const squirrelUrl =
@@ -132,7 +134,7 @@ const Header: React.FC<HeaderProps> = ({
         <div className="bg-white/80 backdrop-blur-sm border border-green-100 px-3 py-1.5 rounded-full flex items-center space-x-2 shadow-sm h-[32px]">
           <CalendarDays size={16} className="text-green-600" />
           <span className="text-xs font-semibold text-gray-700">
-            02.03 (월)
+            {virtualDate || "02.26 (월)"}
           </span>
         </div>
       </div>

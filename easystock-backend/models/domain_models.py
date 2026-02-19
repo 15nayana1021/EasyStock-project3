@@ -30,6 +30,7 @@ class Company(BaseModel):
     description: str = Field(..., description="사업 내용")
     current_price: float = Field(..., description="현재 주가")
     total_shares: int = Field(default=1000000, description="총 발행 주식 수")
+    change_rate: float = Field(default=0.0, description="등락률")
 
 class AgentState(BaseModel):
     """
