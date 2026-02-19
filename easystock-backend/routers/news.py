@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Header, Path
 import aiosqlite
 from database import get_db_connection
+import os
 
 try:
     from services.gamification import gain_exp, check_quest
@@ -10,7 +11,10 @@ except ImportError:
 
 router = APIRouter(prefix="/api/news", tags=["News"])
 
-# 1. 뉴스 목록 조회 (아까 검증된 안전한 코드)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB_PATH = os.path.join(BASE_DIR, "stock_game.db")
+
+# 1. 뉴스 목록 조회
 @router.get("")
 @router.get("/")
 async def get_published_news(db: aiosqlite.Connection = Depends(get_db_connection)):
@@ -20,25 +24,27 @@ async def get_published_news(db: aiosqlite.Connection = Depends(get_db_connectio
         query = """
             SELECT * FROM news 
             ORDER BY id DESC 
-            LIMIT 20
+            LIMIT 1000
         """
         
         async with db.execute(query) as cursor:
             rows = await cursor.fetchall()
-            result = []
-            for row in rows:
-                d = dict(row)
-                result.append({
-                    "id": d.get("id"),
-                    "title": d.get("title"),
-                    "summary": d.get("summary", ""),
-                    "sentiment": d.get("sentiment", "neutral"),
-                    "impact_score": d.get("impact_score", 0),
-                    "category": d.get("category", "일반"),
-                    "source": d.get("source", "알 수 없음"),
-                    "published_at": d.get("published_at") or d.get("created_at") or ""
-                })
-            return result
+            
+        result = []
+        for d in rows:
+            result.append({
+                "id": d["id"],
+                "title": d["title"],
+                "summary": d["summary"],
+                "sentiment": d["sentiment"],
+                "impact_score": d["impact_score"] if "impact_score" in d.keys() else 0,
+                "category": d["category"] if d["category"] else "일반",
+                "source": d["source"] if d["source"] else "Stocky News",
+                "company_name": d["company_name"] if d["company_name"] else "미분류", 
+                "published_at": d["published_at"]
+            })
+            
+        return result
             
     except Exception as e:
         print(f"❌ 뉴스 목록 조회 에러: {e}")
@@ -47,14 +53,16 @@ async def get_published_news(db: aiosqlite.Connection = Depends(get_db_connectio
 # 2. 뉴스 목록 API
 @router.get("/news")
 async def get_news():
-    try:
-        db = await aiosqlite.connect("stock-game.db")
+    try:        
+        db = await aiosqlite.connect("stock_game.db")
         db.row_factory = aiosqlite.Row
-        
+        cursor = await db.execute("SELECT COUNT(*) FROM news")
+        count = await cursor.fetchone()
+
         query = """
-            SELECT id, title, summary, sentiment, category, source, published_at 
+            SELECT id, title, summary, sentiment, impact_score, category, source, company_name, published_at 
             FROM news 
-            ORDER BY id DESC LIMIT 20
+            ORDER BY id DESC LIMIT 1000
         """
         cursor = await db.execute(query)
         rows = await cursor.fetchall()
@@ -67,8 +75,10 @@ async def get_news():
                 "title": d["title"],
                 "summary": d["summary"],
                 "sentiment": d["sentiment"],
-                "category": d["category"] if d.get("category") else "일반",
-                "source": d["source"] if d.get("source") else "Stocky News",
+                "impact_score": d["impact_score"] if "impact_score" in d.keys() else 0,
+                "category": d["category"] if d["category"] else "일반",
+                "source": d["source"] if d["source"] else "Stocky News",
+                "company_name": d["company_name"] if d["company_name"] else "미분류",
                 "published_at": d["published_at"]
             })
         return result
@@ -113,7 +123,7 @@ async def get_news_detail(
         return news_detail
 
     except HTTPException:
-        raise 
+        raise
     except Exception as e:
         print(f"❌ 뉴스 상세 조회 에러: {e}")
         raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다.")

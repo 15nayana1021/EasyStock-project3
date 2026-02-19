@@ -26,16 +26,16 @@ except ImportError:
 
 # 가상 뉴스 전용 10개 기업 리스트
 TARGET_COMPANIES = [
-    {"name": "선우테크", "sector": "전자"},
-    {"name": "네오볼트전자", "sector": "전자"},
-    {"name": "소현소프트", "sector": "IT"},
-    {"name": "클라우드핀 IT", "sector": "IT"},
-    {"name": "재웅바이오", "sector": "바이오"},
-    {"name": "상은메디랩", "sector": "바이오"},
-    {"name": "루미젠바이오", "sector": "바이오"},
-    {"name": "진호파이낸스", "sector": "금융"},
-    {"name": "오리온자산운용", "sector": "금융"},
-    {"name": "예진캐피탈", "sector": "금융"}
+    {"name": "재웅시스템", "sector": "전자", "desc": "시스템 반도체 설계"},
+    {"name": "에이펙스테크", "sector": "전자", "desc": "로봇 및 자동화 설비"},
+    {"name": "소현컴퍼니", "sector": "IT", "desc": "웹 플랫폼 및 클라우드"},
+    {"name": "넥스트데이터", "sector": "IT", "desc": "데이터센터 인프라"},
+    {"name": "진호랩", "sector": "바이오", "desc": "mRNA 신약 개발"},
+    {"name": "상은테크놀로지", "sector": "바이오", "desc": "의료 정밀 기기"},
+    {"name": "인사이트애널리틱스", "sector": "바이오", "desc": "AI 의료 진단"},
+    {"name": "선우솔루션", "sector": "금융", "desc": "핀테크 보안"},
+    {"name": "퀀텀디지털", "sector": "금융", "desc": "알고리즘 트레이딩"},
+    {"name": "예진캐피탈", "sector": "금융", "desc": "벤처 투자(VC)"}
 ]
 
 VIRTUAL_PRESS = ["스토키 일보", "매일경제 AI", "한경 인사이트", "블록체인 뉴스", "Stocky Daily", "월스트리트 찌라시"]
@@ -64,7 +64,7 @@ def save_direct_to_db(company_name, category, news_list):
                 published_at TEXT,
                 company_name TEXT, 
                 category TEXT,
-                source TEXT,  -- 🟢 언론사 칸
+                source TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -135,28 +135,26 @@ def run_bulk_generation():
     # except Exception as e:
     #     print(f"⚠️ 초기화 중 경고: {e}")
 
-    print("\n🏢 [Money Quest] 기업당 1건의 최신 뉴스 생성을 시작합니다...\n")
+    print("\n🏢 [Money Quest] 기업당 10건의 최신 뉴스 생성을 시작합니다...\n")
 
     for comp in TARGET_COMPANIES:
         print(f"✍️ {comp['name']} 뉴스 생성 중...", end="", flush=True)
-        
-        # AI에게 뉴스 요청
-        result = agent.analyze_stock_news(comp['name'], mode="virtual", count=1) 
+
+        result = agent.analyze_stock_news(comp['name'], mode="virtual", count=10, company_desc=comp.get('desc', '')) 
         
         if isinstance(result, list) and len(result) > 0:
-            # AI가 여러 개를 줘도 무조건 '첫 번째 것 딱 1개'만 선택합니다.
-            final_result = [result[0]] 
+            final_result = result 
             
             for news_item in final_result:
                 news_item['source'] = random.choice(VIRTUAL_PRESS)
-            
+
             save_direct_to_db(comp['name'], comp['sector'], final_result)
         else:
             print(f" -> ❌ 생성 실패")
             
-        time.sleep(1) 
+        time.sleep(1)
 
-    print("\n✨ 모든 작업 완료! 이제 기업당 딱 1개씩만 보일 거예요.")
+    print("\n✨ 모든 작업 완료!")
 
 if __name__ == "__main__":
     run_bulk_generation()

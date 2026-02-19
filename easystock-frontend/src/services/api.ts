@@ -52,17 +52,17 @@ export interface NewsItem {
 // 1. 기업 목록 조회 (GET /stocks)
 export const fetchCompanies = async (): Promise<StockData[]> => {
   try {
-    // 1. 백엔드 API 호출 (주소에 /api 추가됨)
+    // 1-1. 백엔드 API 호출 (주소에 /api 추가됨)
     const response = await fetch(`${BASE_URL}/api/stocks`);
 
     if (!response.ok) {
       throw new Error("Network response was not ok");
     }
 
-    // 2. 백엔드에서 보낸 12개 기업 데이터 받기
+    // 1-2. 백엔드에서 보낸 12개 기업 데이터 받기
     const data = await response.json();
 
-    // 3. 백엔드 데이터를 프론트엔드 UI 형식에 맞게 변환 (Mapping)
+    // 1-3. 백엔드 데이터를 프론트엔드 UI 형식에 맞게 변환 (Mapping)
     return data.map((stock: any, index: number) => {
       const formattedPrice = stock.price.toLocaleString() + "원";
 

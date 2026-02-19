@@ -115,7 +115,7 @@ const StockDetail: React.FC<StockDetailProps> = ({
   const STOCK_KEYWORDS: Record<string, string[]> = {
     삼송전자: ["삼송전자", "송전자", "삼송"],
     네오볼트전자: ["네오볼트", "네볼"],
-    마이크로하드: ["마이크로하드", "마하", "M하드"],
+    마이크로하드: ["마이크로하드", "마하", "M하드", "Microhard"],
     루미젠바이오: ["루미젠", "루미젠바이오"],
   };
 

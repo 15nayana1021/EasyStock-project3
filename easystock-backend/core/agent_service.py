@@ -108,10 +108,16 @@ class StockAgentService:
             print(f"❌ Azure Agent 호출 중 오류 발생: {e}")
             return ""
 
-    def analyze_stock_news(self, company_name: str, mode="real", count=2):
+    def analyze_stock_news(self, company_name: str, mode="real", count=2, company_desc: str = ""):
+        desc_instruction = f"- 이 회사의 핵심 사업 모델은 '{company_desc}'입니다. 이와 관련된 전문 용어, 제품, 기술 동향을 반드시 기사에 포함하세요." if company_desc else ""
+
         if mode == "virtual":
             system_prompt = f"""
-            당신은 냉철한 주식 전문 기자입니다. '{company_name}'에 대한 가상 뉴스를 생성하되, 다음 규칙을 엄격히 지키세요.
+            당신은 냉철한 주식 전문 기자입니다. '{company_name}'에 대한 가상 뉴스를 반드시 {count}개 생성하되, 다음 규칙을 엄격히 지키세요.
+
+            [규칙 0: 회사 맞춤형 뉴스 생성]
+            {desc_instruction}
+            - 단순한 뜬구름 잡는 소리가 아닌, 해당 산업군에서 실제로 일어날 법한 구체적인 이슈를 다루세요.
 
             [규칙 1: 현실적인 감성 분배]
             - 모든 뉴스가 긍정적일 수는 없습니다. 50%의 확률로 'negative' 뉴스를 생성하세요.
@@ -126,12 +132,19 @@ class StockAgentService:
             [규칙 3: 구체적인 본문]
             - 본문은 3문단 이상으로, 실제 기사처럼 수치와 정황을 가상으로 만들어 넣으세요.
 
-            반드시 이 JSON 포맷으로만 응답하세요:
+            반드시 이 JSON 포맷으로만 응답하세요. 뉴스 {count}개가 배열 안에 들어가야 합니다:
             [
                 {{
-                    "title": "헤드라인",
-                    "content": "본문",
-                    "summary": "요약",
+                    "title": "헤드라인1",
+                    "content": "본문1",
+                    "summary": "요약1",
+                    "sentiment": "positive 또는 negative",
+                    "impact_score": (내용에 맞는 10~95 사이의 숫자)
+                }},
+                {{
+                    "title": "헤드라인2",
+                    "content": "본문2",
+                    "summary": "요약2",
                     "sentiment": "positive 또는 negative",
                     "impact_score": (내용에 맞는 10~95 사이의 숫자)
                 }}

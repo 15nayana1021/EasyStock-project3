@@ -195,7 +195,6 @@ const App: React.FC = () => {
   const handleLogin = async (inputNickname: string) => {
     // 1. 백엔드에 로그인(회원가입) 요청
     const response = await loginUser(inputNickname);
-    console.log("백엔드 로그인 응답 데이터:", response);
 
     // 2. 백엔드가 준 진짜 숫자 ID 추출
     const realUserId = response?.user_id || response?.id || "1";
@@ -207,7 +206,7 @@ const App: React.FC = () => {
     setNickname(inputNickname);
   };
 
-  // 2. useEffect는 이제 loadData를 호출만 합니다.
+  // 3. useEffect는 이제 loadData를 호출만 합니다.
   useEffect(() => {
     if (!userId) return;
     loadData();
@@ -409,51 +408,105 @@ const App: React.FC = () => {
         const savedPool = localStorage.getItem(NEWS_POOL_KEY);
 
         if (savedActive && savedPool) {
-          setActiveNews(JSON.parse(savedActive));
-          setNewsPool(JSON.parse(savedPool));
-          return;
+          const parsedActive = JSON.parse(savedActive);
+          const parsedPool = JSON.parse(savedPool);
+
+          if (parsedPool.length > 0) {
+            setActiveNews(parsedActive);
+            setNewsPool(parsedPool);
+            return;
+          }
         }
 
-        // 2. 저장된 게 없다면 (처음 시작이라면) 평소처럼 4개를 꺼내서 줄을 세웁니다.
         const { fetchNewsList } = await import("./services/api");
         const allNews = await fetchNewsList();
+        const newsByCompany: { [key: string]: any[] } = {};
 
-        const newsByCategory: { [key: string]: any[] } = {};
-        allNews.forEach((news) => {
-          const cat = news.category || "일반";
-          if (!newsByCategory[cat]) newsByCategory[cat] = [];
-          newsByCategory[cat].push(news);
-        });
+        allNews.forEach((news: any) => {
+          if (allNews.indexOf(news) === 0) {
+          }
 
-        const initialActive: any[] = [];
-        const categories = Object.keys(newsByCategory);
-        categories.forEach((cat) => {
-          if (newsByCategory[cat].length > 0) {
-            const firstNews = newsByCategory[cat].shift()!;
-            initialActive.push({ ...firstNews, display_date: "02.26" });
+          const comp =
+            news.company_name ||
+            news.companyName ||
+            news.ticker ||
+            news.company ||
+            "미분류";
+
+          if (!newsByCompany[comp]) newsByCompany[comp] = [];
+
+          const isDuplicate = newsByCompany[comp].some(
+            (n: any) => n.title === news.title,
+          );
+
+          if (!isDuplicate && newsByCompany[comp].length < 20) {
+            newsByCompany[comp].push(news);
           }
         });
 
         const balancedPool: any[] = [];
-        let hasNews = true;
-        while (hasNews) {
-          hasNews = false;
-          const shuffledCats = [...categories].sort(() => Math.random() - 0.5);
-          shuffledCats.forEach((cat) => {
-            if (newsByCategory[cat].length > 0) {
-              balancedPool.push(newsByCategory[cat].shift()!);
-              hasNews = true;
-            }
-          });
+        let lastCompany = "";
+
+        // 2. 도배 방지 섞기 로직
+        while (true) {
+          const availableCompanies = Object.keys(newsByCompany).filter(
+            (comp) => newsByCompany[comp].length > 0,
+          );
+          if (availableCompanies.length === 0) break;
+
+          let candidates = availableCompanies.filter(
+            (comp) => comp !== lastCompany,
+          );
+          if (candidates.length === 0) {
+            candidates = availableCompanies;
+          }
+
+          const randomComp =
+            candidates[Math.floor(Math.random() * candidates.length)];
+          const selectedNews = newsByCompany[randomComp].shift()!;
+          balancedPool.push(selectedNews);
+          lastCompany = randomComp;
         }
 
-        // 3. 처음 세팅된 상태를 화면에 띄우고 동시에 저장소에도 꾹꾹 눌러 담습니다.
+        // 3. 화면에 보여줄 초기 뉴스 4개 설정
+        const TARGET_COMPANIES = [
+          "삼송전자",
+          "마이크로하드",
+          "예진캐피탈",
+          "진호랩",
+        ];
+        const initialActive: any[] = [];
+        const finalPool: any[] = [];
+        for (let i = 0; i < balancedPool.length; i++) {
+          const news = balancedPool[i];
+          const compName =
+            news.company_name || news.companyName || news.ticker || "미분류";
+
+          const isTarget = TARGET_COMPANIES.includes(compName);
+          const isAlreadyAdded = initialActive.some(
+            (n) =>
+              (n.company_name || n.companyName || n.ticker || "미분류") ===
+              compName,
+          );
+
+          if (isTarget && !isAlreadyAdded && initialActive.length < 4) {
+            initialActive.push({ ...news, display_date: "02.26" });
+          } else {
+            finalPool.push(news);
+          }
+        }
+
+        while (initialActive.length < 4 && finalPool.length > 0) {
+          initialActive.push({ ...finalPool.shift(), display_date: "02.26" });
+        }
+
+        // 4. 상태 및 저장소 업데이트
         setActiveNews(initialActive);
-        setNewsPool(balancedPool);
+        setNewsPool(finalPool);
         localStorage.setItem(ACTIVE_NEWS_KEY, JSON.stringify(initialActive));
-        localStorage.setItem(NEWS_POOL_KEY, JSON.stringify(balancedPool));
+        localStorage.setItem(NEWS_POOL_KEY, JSON.stringify(finalPool));
       } catch (error) {
-        console.error("뉴스 로딩 실패:", error);
+        console.error("🚨 뉴스 로딩 실패:", error);
       }
     };
 
@@ -484,11 +537,12 @@ const App: React.FC = () => {
 
       // 30초마다 뉴스 배포할 때마다 저장소 갱신
       if (totalPlayedMs - lastNewsTime >= 30000) {
+        lastNewsTime = totalPlayedMs;
+
         setNewsPool((prevPool) => {
           if (prevPool.length === 0) return prevPool;
 
-          const randomIndex = Math.floor(Math.random() * prevPool.length);
-          const selectedNews = prevPool[randomIndex];
+          const selectedNews = prevPool[0];
           const displayTime = newVirtualDate.slice(0, 5);
           const updatedNews = { ...selectedNews, display_date: displayTime };
 
@@ -499,15 +553,12 @@ const App: React.FC = () => {
             return newActive;
           });
 
-          // 2. 창고(Pool)에서 하나 뺀 상태도 바로 저장!
-          const newPool = [...prevPool];
-          newPool.splice(randomIndex, 1);
+          // 2. 창고(Pool)에서 첫 번째 하나 뺀 상태도 바로 저장!
+          const newPool = prevPool.slice(1);
           localStorage.setItem(NEWS_POOL_KEY, JSON.stringify(newPool));
 
           return newPool;
         });
-
-        lastNewsTime = totalPlayedMs;
       }
     };
 
@@ -517,6 +568,11 @@ const App: React.FC = () => {
   if (!userId) {
     return <LoginModal onLogin={handleLogin} />;
   }
+
+  const uniqueActiveNews = activeNews.filter(
+    (news, index, self) =>
+      index === self.findIndex((t) => t.title === news.title),
+  );
 
   // 닉네임이 있으면 라우터를 실행합니다.
   return (
@@ -532,7 +588,7 @@ const App: React.FC = () => {
               cash={cash}
               portfolio={livePortfolio}
               virtualDate={virtualDate}
-              activeNews={activeNews}
+              activeNews={uniqueActiveNews}
             />
           }
         >
@@ -563,7 +619,7 @@ const App: React.FC = () => {
           />
           <Route
             path="/news"
-            element={<NewsContent activeNews={activeNews} />}
+            element={<NewsContent activeNews={uniqueActiveNews} />}
           />
           <Route path="/ranking" element={<RankingContent />} />
           <Route path="/community" element={<CommunityContent />} />

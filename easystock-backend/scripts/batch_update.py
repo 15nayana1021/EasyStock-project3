@@ -36,14 +36,14 @@ REAL_NEWS_TARGETS = [
     }
 ]
 
-def fetch_real_news_headlines(query):
+def fetch_real_news_headlines(query, count=10):
     """Google News RSS에서 제목과 실제 언론사 이름을 추출합니다."""
     url = f"https://news.google.com/rss/search?q={query}&hl=ko&gl=KR&ceid=KR:ko"
     try:
         response = requests.get(url, timeout=10)
         root = ET.fromstring(response.content)
         articles = []
-        for item in root.findall('.//item')[:1]:
+        for item in root.findall('.//item')[:count]:
             title = item.find('title').text
             source_element = item.find('source')
             source_name = source_element.text if source_element is not None else "경제신문"
@@ -60,7 +60,7 @@ def run_real_news_batch():
         real_name = target['real_name']
         game_name = target['game_name']
         
-        real_articles = fetch_real_news_headlines(real_name)
+        real_articles = fetch_real_news_headlines(real_name, count=10)
         if not real_articles: continue
 
         for article in real_articles:
