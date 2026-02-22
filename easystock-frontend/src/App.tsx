@@ -8,13 +8,18 @@ import {
   useParams,
 } from "react-router-dom";
 
-// --- 컴포넌트 임포트 ---
+// 컴포넌트 임포트
 import Header from "./components/Header";
 import Sidebar from "./components/Sidebar";
 import BottomNav from "./components/BottomNav";
-import LoginModal from "./components/LoginModal";
 
-// --- 페이지/콘텐츠 임포트 ---
+// 온보딩 컴포넌트 임포트
+import TermsAgreement from "./components/onboarding/TermsAgreement";
+import AccountOpening from "./components/onboarding/AccountOpening";
+import AccountGuide from "./components/onboarding/AccountGuide";
+import AppTour from "./components/onboarding/AppTour";
+
+// 페이지/콘텐츠 임포트
 import PopularStocks from "./components/PopularStocks";
 import NewsContent from "./components/NewsContent";
 import CommunityContent from "./components/CommunityContent";
@@ -27,7 +32,7 @@ import ChatbotContent from "./components/ChatbotContent";
 import SettingsContent from "./components/SettingsContent";
 import StockDetail from "./components/StockDetail";
 
-// --- 데이터 및 API 임포트 ---
+// 데이터 및 API 임포트
 import {
   StockData,
   PortfolioItem,
@@ -38,7 +43,6 @@ import {
 import { initialWatchlist } from "./data/mockData";
 import {
   fetchMyPortfolio,
-  placeOrder,
   loginUser,
   fetchCompanies,
   fetchMyProfile,
@@ -46,7 +50,7 @@ import {
   NewsItem,
 } from "./services/api";
 
-// 1. Layout 컴포넌트 (기존 디자인 유지)
+// 1. Layout 컴포넌트
 const Layout = ({
   children,
   hideHeader = false,
@@ -58,18 +62,7 @@ const Layout = ({
   portfolio,
   virtualDate,
   activeNews,
-}: {
-  children?: React.ReactNode;
-  hideHeader?: boolean;
-  notifications: NotificationItem[];
-  onMarkAsRead: () => void;
-  nickname?: string;
-  level?: number;
-  cash?: number;
-  portfolio?: PortfolioItem[];
-  virtualDate?: string;
-  activeNews?: NewsItem[];
-}) => {
+}: any) => {
   const location = useLocation();
   const isHome = [
     "/",
@@ -81,7 +74,7 @@ const Layout = ({
   ].includes(location.pathname);
 
   return (
-    <div className="flex flex-col h-screen max-w-md mx-auto bg-[#F4F8F6] relative overflow-hidden shadow-2xl font-['Pretendard']">
+    <div className="flex flex-col h-[100dvh] w-full max-w-[430px] mx-auto bg-[#e1eaf5] relative overflow-hidden shadow-2xl font-['Pretendard']">
       {!hideHeader && (
         <div className="shrink-0">
           <Header
@@ -90,6 +83,8 @@ const Layout = ({
             onMarkAsRead={onMarkAsRead}
             nickname={nickname}
             level={level}
+            userName={nickname}
+            userLevel={`Lv.${level}`}
             virtualDate={virtualDate}
           />
           <div className="mx-4 h-[1px] bg-black/5"></div>
@@ -104,7 +99,7 @@ const Layout = ({
             {children}
           </div>
         ) : (
-          <>
+          <div className="flex w-full h-full">
             {isHome && (
               <div className="w-16 mr-3 flex flex-col h-full shrink-0">
                 <Sidebar cash={cash} portfolio={portfolio} />
@@ -113,7 +108,7 @@ const Layout = ({
             <div className="flex-1 h-full overflow-hidden">
               <Outlet context={{ activeNews }} />
             </div>
-          </>
+          </div>
         )}
       </div>
       <div className="shrink-0 border-t border-black/5">
@@ -123,57 +118,19 @@ const Layout = ({
   );
 };
 
-const StockDetailWrapper = ({
-  stocks,
-  watchlist,
-  onBuy,
-  onSell,
-  onToggleWatchlist,
-  virtualDate,
-}: any) => {
-  const { symbol } = useParams();
-
-  // 전체 주식(stocks) 중에서 주소창 이름과 똑같은 주식을 찾습니다.
-  const stock = stocks.find(
-    (s: StockData) => s.symbol === symbol || s.name === symbol,
-  );
-
-  // 주식 데이터를 아직 못 찾았을 때 튕기지 않게 막아줍니다.
-  if (!stock) {
-    return (
-      <div className="flex items-center justify-center h-full text-gray-500 font-bold">
-        주식 정보를 불러오는 중입니다...
-      </div>
-    );
-  }
-
-  // 이 주식이 내 관심종목(하트)에 있는지 확인합니다.
-  const isLiked = watchlist.some(
-    (item: WatchlistItem) => item.name === stock.name,
-  );
-
-  // 완벽하게 준비된 데이터를 진짜 StockDetail로 넘겨줍니다!
-  return (
-    <StockDetail
-      stock={stock}
-      isLiked={isLiked}
-      onToggleWatchlist={() => onToggleWatchlist(stock)}
-      onBack={() => window.history.back()}
-      onBuy={onBuy}
-      onSell={onSell}
-      virtualDate={virtualDate}
-    />
-  );
-};
-
 // 2. App 컴포넌트 (메인 로직)
 const App: React.FC = () => {
   const [userId, setUserId] = useState<string | null>(
     localStorage.getItem("stocky_user_id"),
   );
+  const [level, setLevel] = useState<number>(
+    localStorage.getItem("app-tour-done") === "true" ? 2 : 1,
+  );
   const [nickname, setNickname] = useState<string>(
     localStorage.getItem("stocky_nickname") || "투자자",
   );
+  const userLevelString =
+    level === 1 ? "lv.1 입문자" : `Lv.${level} 초보 투자자`;
   const [cash, setCash] = useState<number>(0);
   const [portfolio, setPortfolio] = useState<PortfolioItem[]>([]);
   const [transactions, setTransactions] = useState<TransactionItem[]>([]);
@@ -181,32 +138,85 @@ const App: React.FC = () => {
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>(initialWatchlist);
 
   const [stocks, setStocks] = useState<StockData[]>([]);
-  const [level, setLevel] = useState<number>(1);
-  const [userLevel, setUserLevel] = useState<number>(1);
   const [virtualDate, setVirtualDate] = useState<string>("02.26 (목)");
   const [newsPool, setNewsPool] = useState<NewsItem[]>([]);
   const [activeNews, setActiveNews] = useState<NewsItem[]>([]);
-  const [isOrdering, setIsOrdering] = useState(false);
+
+  // 온보딩 관련 상태
+  const [onboardingStep, setOnboardingStep] = useState<
+    "terms" | "opening" | "guide"
+  >("terms");
+  const [pendingNickname, setPendingNickname] = useState("");
+  const [showTour, setShowTour] = useState(
+    () => localStorage.getItem("app-tour-done") !== "true",
+  );
+
   const isFirstLoadRef = React.useRef(true);
   const notifiedIdsRef = React.useRef<Set<number>>(new Set());
   const virtualDateRef = React.useRef<string>("02.26 (목)");
 
-  // 로그인 핸들러
-  const handleLogin = async (inputNickname: string) => {
-    // 1. 백엔드에 로그인(회원가입) 요청
-    const response = await loginUser(inputNickname);
+  // 3. 주식 상세 페이지 래퍼 컴포넌트
+  const StockDetailWrapper = ({
+    stocks,
+    watchlist,
+    onBuy,
+    onSell,
+    onToggleWatchlist,
+    virtualDate,
+  }: any) => {
+    const { symbol } = useParams();
 
-    // 2. 백엔드가 준 진짜 숫자 ID 추출
-    const realUserId = response?.user_id || response?.id || "1";
+    const stock = stocks.find(
+      (s: StockData) => s.symbol === symbol || s.name === symbol,
+    );
 
-    localStorage.setItem("stocky_user_id", realUserId.toString());
-    localStorage.setItem("stocky_nickname", inputNickname);
+    if (!stock) {
+      return (
+        <div className="flex items-center justify-center h-full text-gray-500 font-bold">
+          주식 정보를 불러오는 중입니다...
+        </div>
+      );
+    }
 
-    setUserId(realUserId.toString());
-    setNickname(inputNickname);
+    const isLiked = watchlist.some(
+      (item: WatchlistItem) => item.name === stock.name,
+    );
+
+    return (
+      <StockDetail
+        stock={stock}
+        isLiked={isLiked}
+        onToggleWatchlist={() => onToggleWatchlist(stock)}
+        onBack={() => window.history.back()}
+        onBuy={onBuy}
+        onSell={onSell}
+        virtualDate={virtualDate}
+        cash={cash}
+        portfolio={portfolio}
+      />
+    );
   };
 
-  // 3. useEffect는 이제 loadData를 호출만 합니다.
+  // 로그인 핸들러 (진짜 백엔드 연동)
+  const handleLogin = async (inputNickname: string) => {
+    try {
+      const response = await loginUser(inputNickname);
+      const realUserId = response?.user_id || response?.id || "1";
+
+      localStorage.setItem("stocky_user_id", realUserId.toString());
+      localStorage.setItem("stocky_nickname", inputNickname);
+
+      setUserId(realUserId.toString());
+      setNickname(inputNickname);
+    } catch (error) {
+      console.error("로그인 실패:", error);
+      // 에러 시 임시 처리
+      setUserId("1");
+      setNickname(inputNickname);
+    }
+  };
+
+  // 데이터 폴링 (사용자 백엔드 로직 유지)
   useEffect(() => {
     if (!userId) return;
     loadData();
@@ -214,65 +224,9 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [userId]);
 
-  // 거래 핸들러 (매수/매도)
-  const handleBuy = async (stock: StockData, price: number, qty: number) => {
-    if (!userId) return;
-    loadData();
-  };
-
-  const handleSell = async (stock: StockData, price: number, qty: number) => {
-    if (!userId) return;
-    loadData();
-  };
-
-  // 기타 헬퍼 함수들
-  const handleToggleWatchlist = (stock: StockData) => {
-    const exists = watchlist.find((item) => item.name === stock.name);
-    if (exists) {
-      setWatchlist((prev) => prev.filter((item) => item.name !== stock.name));
-    } else {
-      const newItem: WatchlistItem = {
-        id: Date.now(),
-        name: stock.name,
-        price: stock.price,
-        change: stock.change,
-        isUp: stock.isUp,
-        shares: "0주",
-        badge: "관심",
-        color: stock.color || "bg-gray-400",
-        logoText: stock.logoText || stock.name.charAt(0),
-      };
-      setWatchlist((prev) => [...prev, newItem]);
-    }
-  };
-
-  useEffect(() => {
-    const saved = localStorage.getItem("stocky_notified_ids");
-    if (saved) {
-      const parsed = JSON.parse(saved).map((id: any) => Number(id));
-      notifiedIdsRef.current = new Set(parsed);
-    }
-  }, []);
-
-  const addNotification = (message: string, type: "buy" | "sell") => {
-    const newNoti: NotificationItem = {
-      id: Date.now() + Math.random(),
-      message,
-      // time: new Date().toLocaleTimeString("ko-KR", {
-      //   hour: "2-digit",
-      //   minute: "2-digit",
-      // }),
-      time: virtualDateRef.current,
-      isRead: false,
-      type,
-    };
-    setNotifications((prev) => [newNoti, ...prev]);
-  };
-
   const loadData = async () => {
     if (!userId) return;
 
-    // 자산 데이터 로드
     try {
       const data = await fetchMyPortfolio(userId);
       if (data && data.portfolio) {
@@ -296,7 +250,6 @@ const App: React.FC = () => {
       console.warn("자산 로딩 실패", e);
     }
 
-    // 프로필 로드
     try {
       const profileData = await fetchMyProfile(userId);
       if (profileData && profileData.level) {
@@ -304,7 +257,6 @@ const App: React.FC = () => {
       }
     } catch (error) {}
 
-    // 체결 감시 로직
     try {
       const allOrders = await fetchAllOrders(userId);
       let hasNewUpdate = false;
@@ -315,21 +267,14 @@ const App: React.FC = () => {
           !notifiedIdsRef.current.has(order.id)
         ) {
           if (!isFirstLoadRef.current) {
-            console.log(`🔔 알림 발송! Order ID: ${order.id}`);
-
             const side = order.side || order.order_type;
             const sideText =
               side === "BUY" || side === "매수" ? "매수" : "매도";
-
             addNotification(
               `${order.company_name} ${order.quantity}주 ${sideText} 체결 완료!`,
               side === "BUY" || side === "매수" ? "buy" : "sell",
             );
-          } else {
-            console.log(`🔕 첫 로딩이라 알림 생략 (ID: ${order.id})`);
           }
-
-          // 알림 목록에 등록
           notifiedIdsRef.current.add(order.id);
           hasNewUpdate = true;
         }
@@ -344,17 +289,11 @@ const App: React.FC = () => {
     } catch (error) {
       console.error("체결 감시 중 오류:", error);
     } finally {
-      if (isFirstLoadRef.current) {
-        console.log("✅ 첫 로딩 상태 해제");
-        isFirstLoadRef.current = false;
-      }
+      if (isFirstLoadRef.current) isFirstLoadRef.current = false;
     }
   };
 
-  const handleMarkNotificationsAsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-  };
-
+  // 주식 목록 로딩
   useEffect(() => {
     const loadStocks = async () => {
       try {
@@ -364,40 +303,82 @@ const App: React.FC = () => {
         console.error("Failed to load stocks:", error);
       }
     };
-
     loadStocks();
     const interval = setInterval(loadStocks, 5000);
     return () => clearInterval(interval);
   }, []);
 
+  // 거래 및 관심종목 핸들러
+  const handleBuy = async (stock: StockData, price: number, qty: number) => {
+    if (userId) loadData();
+  };
+  const handleSell = async (stock: StockData, price: number, qty: number) => {
+    if (userId) loadData();
+  };
+
+  const handleToggleWatchlist = (stock: StockData) => {
+    const exists = watchlist.find((item) => item.name === stock.name);
+    if (exists) {
+      setWatchlist((prev) => prev.filter((item) => item.name !== stock.name));
+    } else {
+      setWatchlist((prev) => [
+        ...prev,
+        {
+          id: Date.now(),
+          name: stock.name,
+          price: stock.price,
+          change: stock.change,
+          isUp: stock.isUp,
+          shares: "0주",
+          badge: "관심",
+          color: stock.color || "bg-gray-400",
+          logoText: stock.logoText || stock.name.charAt(0),
+        },
+      ]);
+    }
+  };
+
+  const handleMarkNotificationsAsRead = () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+  };
+
+  const addNotification = (message: string, type: "buy" | "sell") => {
+    setNotifications((prev) => [
+      {
+        id: Date.now() + Math.random(),
+        message,
+        time: virtualDateRef.current,
+        isRead: false,
+        type,
+      },
+      ...prev,
+    ]);
+  };
+
+  // 실시간 포트폴리오 매핑
   const livePortfolio = portfolio.map((item) => {
     const normalizedName = item.name === "삼성전자" ? "삼송전자" : item.name;
-
     const liveStock = stocks.find(
       (s) => s.name === normalizedName || s.symbol === normalizedName,
     );
-
     if (liveStock) {
-      const currentPriceNum =
-        typeof liveStock.price === "number"
-          ? liveStock.price
-          : Number(liveStock.price.toString().replace(/[^0-9-]/g, ""));
-
       return {
         ...item,
-        current_price: currentPriceNum,
+        current_price:
+          typeof liveStock.price === "number"
+            ? liveStock.price
+            : Number(liveStock.price.toString().replace(/[^0-9-]/g, "")),
       };
     }
     return item;
   });
 
+  // 뉴스 혼합 및 가상 시간 흐름 로직
   useEffect(() => {
     if (!userId) return;
 
     const START_DATE = new Date("2026-02-26T00:00:00");
     const REAL_MS_PER_VIRTUAL_DAY = 3 * 60 * 1000;
-
-    // 유저별 저장소 열쇠(Key) 이름 설정
     const TIME_KEY = `stocky_${userId}_played_ms`;
     const ACTIVE_NEWS_KEY = `stocky_${userId}_active_news`;
     const NEWS_POOL_KEY = `stocky_${userId}_news_pool`;
@@ -410,7 +391,6 @@ const App: React.FC = () => {
         if (savedActive && savedPool) {
           const parsedActive = JSON.parse(savedActive);
           const parsedPool = JSON.parse(savedPool);
-
           if (parsedPool.length > 0) {
             setActiveNews(parsedActive);
             setNewsPool(parsedPool);
@@ -423,52 +403,38 @@ const App: React.FC = () => {
         const newsByCompany: { [key: string]: any[] } = {};
 
         allNews.forEach((news: any) => {
-          if (allNews.indexOf(news) === 0) {
-          }
-
           const comp =
             news.company_name ||
             news.companyName ||
             news.ticker ||
             news.company ||
             "미분류";
-
           if (!newsByCompany[comp]) newsByCompany[comp] = [];
-
           const isDuplicate = newsByCompany[comp].some(
             (n: any) => n.title === news.title,
           );
-
-          if (!isDuplicate && newsByCompany[comp].length < 20) {
+          if (!isDuplicate && newsByCompany[comp].length < 20)
             newsByCompany[comp].push(news);
-          }
         });
 
         const balancedPool: any[] = [];
         let lastCompany = "";
 
-        // 2. 도배 방지 섞기 로직
         while (true) {
           const availableCompanies = Object.keys(newsByCompany).filter(
             (comp) => newsByCompany[comp].length > 0,
           );
           if (availableCompanies.length === 0) break;
-
           let candidates = availableCompanies.filter(
             (comp) => comp !== lastCompany,
           );
-          if (candidates.length === 0) {
-            candidates = availableCompanies;
-          }
-
+          if (candidates.length === 0) candidates = availableCompanies;
           const randomComp =
             candidates[Math.floor(Math.random() * candidates.length)];
-          const selectedNews = newsByCompany[randomComp].shift()!;
-          balancedPool.push(selectedNews);
+          balancedPool.push(newsByCompany[randomComp].shift()!);
           lastCompany = randomComp;
         }
 
-        // 3. 화면에 보여줄 초기 뉴스 4개 설정
         const TARGET_COMPANIES = [
           "삼송전자",
           "마이크로하드",
@@ -477,11 +443,11 @@ const App: React.FC = () => {
         ];
         const initialActive: any[] = [];
         const finalPool: any[] = [];
+
         for (let i = 0; i < balancedPool.length; i++) {
           const news = balancedPool[i];
           const compName =
             news.company_name || news.companyName || news.ticker || "미분류";
-
           const isTarget = TARGET_COMPANIES.includes(compName);
           const isAlreadyAdded = initialActive.some(
             (n) =>
@@ -500,7 +466,6 @@ const App: React.FC = () => {
           initialActive.push({ ...finalPool.shift(), display_date: "02.26" });
         }
 
-        // 4. 상태 및 저장소 업데이트
         setActiveNews(initialActive);
         setNewsPool(finalPool);
         localStorage.setItem(ACTIVE_NEWS_KEY, JSON.stringify(initialActive));
@@ -510,9 +475,7 @@ const App: React.FC = () => {
       }
     };
 
-    if (activeNews.length === 0) {
-      initNews();
-    }
+    if (activeNews.length === 0) initNews();
 
     let totalPlayedMs = parseInt(localStorage.getItem(TIME_KEY) || "0");
     let lastNewsTime = totalPlayedMs;
@@ -535,28 +498,22 @@ const App: React.FC = () => {
       setVirtualDate(newVirtualDate);
       virtualDateRef.current = newVirtualDate;
 
-      // 30초마다 뉴스 배포할 때마다 저장소 갱신
       if (totalPlayedMs - lastNewsTime >= 30000) {
         lastNewsTime = totalPlayedMs;
-
         setNewsPool((prevPool) => {
           if (prevPool.length === 0) return prevPool;
-
           const selectedNews = prevPool[0];
           const displayTime = newVirtualDate.slice(0, 5);
           const updatedNews = { ...selectedNews, display_date: displayTime };
 
-          // 1. 화면(Active)에 새 뉴스를 띄우고 바로 저장!
           setActiveNews((prevActive) => {
             const newActive = [updatedNews, ...prevActive];
             localStorage.setItem(ACTIVE_NEWS_KEY, JSON.stringify(newActive));
             return newActive;
           });
 
-          // 2. 창고(Pool)에서 첫 번째 하나 뺀 상태도 바로 저장!
           const newPool = prevPool.slice(1);
           localStorage.setItem(NEWS_POOL_KEY, JSON.stringify(newPool));
-
           return newPool;
         });
       }
@@ -565,127 +522,172 @@ const App: React.FC = () => {
     const interval = setInterval(updateVirtualTime, 1000);
     return () => clearInterval(interval);
   }, [userId]);
-  if (!userId) {
-    return <LoginModal onLogin={handleLogin} />;
-  }
 
+  // 쌍둥이 뉴스 중복 방지
   const uniqueActiveNews = activeNews.filter(
     (news, index, self) =>
       index === self.findIndex((t) => t.title === news.title),
   );
 
-  // 닉네임이 있으면 라우터를 실행합니다.
-  return (
-    <Router>
-      <Routes>
-        <Route
-          element={
-            <Layout
-              notifications={notifications}
-              onMarkAsRead={handleMarkNotificationsAsRead}
-              nickname={nickname}
-              level={level}
-              cash={cash}
-              portfolio={livePortfolio}
-              virtualDate={virtualDate}
-              activeNews={uniqueActiveNews}
-            />
-          }
-        >
-          <Route
-            path="/assets"
-            element={
-              <AssetsContent
-                cash={cash}
-                portfolio={livePortfolio}
-                refreshData={loadData}
-              />
-            }
-          />
-          <Route path="/" element={<PopularStocks />} />
-
-          <Route
-            path="/stock/:symbol"
-            element={
-              <StockDetailWrapper
-                stocks={stocks}
-                watchlist={watchlist}
-                onToggleWatchlist={handleToggleWatchlist}
-                onBuy={handleBuy}
-                onSell={handleSell}
-                virtualDate={virtualDate}
-              />
-            }
-          />
-          <Route
-            path="/news"
-            element={<NewsContent activeNews={uniqueActiveNews} />}
-          />
-          <Route path="/ranking" element={<RankingContent />} />
-          <Route path="/community" element={<CommunityContent />} />
-          <Route path="/quest" element={<QuestContent />} />
-
-          <Route
-            path="/market"
-            element={
-              <MarketContent
-                stocks={stocks}
-                watchlist={watchlist}
-                onToggleWatchlist={handleToggleWatchlist}
-                onBuy={handleBuy}
-                onSell={handleSell}
-                virtualDate={virtualDate}
-              />
-            }
-          />
-
-          <Route
-            path="/status"
-            element={
-              <StockStatusContent
-                watchlist={watchlist}
-                onToggleWatchlist={handleToggleWatchlist}
-                cash={cash}
-                portfolio={livePortfolio}
-                transactions={transactions}
-                onBuy={handleBuy}
-                onSell={handleSell}
-                virtualDate={virtualDate}
-              />
-            }
-          />
-        </Route>
-
-        <Route
-          path="/chatbot"
-          element={
-            <Layout
-              hideHeader
-              notifications={notifications}
-              onMarkAsRead={handleMarkNotificationsAsRead}
-            >
-              <ChatbotContent onBack={() => window.history.back()} />
-            </Layout>
-          }
+  // 온보딩 라우팅
+  if (!userId) {
+    if (onboardingStep === "terms") {
+      return (
+        <TermsAgreement
+          onNext={() => setOnboardingStep("opening")}
+          onSkip={() => setOnboardingStep("opening")}
         />
+      );
+    }
+    if (onboardingStep === "guide") {
+      return <AccountGuide onBack={() => setOnboardingStep("opening")} />;
+    }
+    if (onboardingStep === "opening") {
+      return (
+        <AccountOpening
+          onBack={() => setOnboardingStep("terms")}
+          onNext={() => handleLogin(pendingNickname || "투자자")}
+          onShowGuide={() => setOnboardingStep("guide")}
+          onSkip={() => handleLogin("투자자")}
+          onNicknameChange={(name) => setPendingNickname(name)}
+        />
+      );
+    }
+  }
 
-        <Route
-          path="/settings"
-          element={
-            <Layout
-              hideHeader
-              notifications={notifications}
-              onMarkAsRead={handleMarkNotificationsAsRead}
-            >
-              <SettingsContent
+  // 메인 라우터
+  return (
+    <>
+      <Router>
+        <Routes>
+          <Route
+            element={
+              <Layout
                 notifications={notifications}
                 onMarkAsRead={handleMarkNotificationsAsRead}
+                nickname={nickname}
+                level={level}
+                cash={cash}
+                portfolio={livePortfolio}
+                virtualDate={virtualDate}
+                activeNews={uniqueActiveNews}
               />
-            </Layout>
-          }
+            }
+          >
+            <Route path="/" element={<PopularStocks />} />
+            <Route
+              path="/assets"
+              element={
+                <AssetsContent
+                  cash={cash}
+                  portfolio={livePortfolio}
+                  refreshData={loadData}
+                />
+              }
+            />
+
+            <Route
+              path="/stock/:symbol"
+              element={
+                <StockDetailWrapper
+                  stocks={stocks}
+                  watchlist={watchlist}
+                  onToggleWatchlist={handleToggleWatchlist}
+                  onBuy={handleBuy}
+                  onSell={handleSell}
+                  virtualDate={virtualDate}
+                />
+              }
+            />
+
+            <Route
+              path="/news"
+              element={<NewsContent activeNews={uniqueActiveNews} />}
+            />
+            <Route
+              path="/ranking"
+              element={<RankingContent userName={nickname} />}
+            />
+            <Route
+              path="/chatbot"
+              element={<ChatbotContent onBack={() => {}} userName={nickname} />}
+            />
+            <Route
+              path="/community"
+              element={<CommunityContent userName={nickname} />}
+            />
+            <Route path="/quest" element={<QuestContent />} />
+
+            <Route
+              path="/market"
+              element={
+                <MarketContent
+                  stocks={stocks}
+                  watchlist={watchlist}
+                  onToggleWatchlist={handleToggleWatchlist}
+                  onBuy={handleBuy}
+                  onSell={handleSell}
+                  virtualDate={virtualDate}
+                  activeNews={activeNews}
+                  cash={cash}
+                  portfolio={livePortfolio}
+                />
+              }
+            />
+
+            <Route
+              path="/status"
+              element={
+                <StockStatusContent
+                  watchlist={watchlist}
+                  onToggleWatchlist={handleToggleWatchlist}
+                  cash={cash}
+                  portfolio={livePortfolio}
+                  transactions={transactions}
+                  onBuy={handleBuy}
+                  onSell={handleSell}
+                  virtualDate={virtualDate}
+                />
+              }
+            />
+          </Route>
+
+          <Route
+            path="/settings"
+            element={
+              <Layout
+                hideHeader
+                notifications={notifications}
+                onMarkAsRead={handleMarkNotificationsAsRead}
+              >
+                <SettingsContent
+                  notifications={notifications}
+                  onMarkAsRead={handleMarkNotificationsAsRead}
+                  userName={nickname}
+                  userLevel={userLevelString}
+                />
+              </Layout>
+            }
+          />
+        </Routes>
+      </Router>
+
+      {/* 튜토리얼 (온보딩 완료 후 띄우기) */}
+      {userId && showTour && (
+        <AppTour
+          onComplete={() => {
+            // 1. 튜토리얼 창 닫기
+            setShowTour(false);
+
+            // 2. 튜토리얼 완료했다고 내 컴퓨터(로컬스토리지)에 저장하기
+            localStorage.setItem("app-tour-done", "true");
+
+            // 3. 레벨을 즉시 2로 올리기! (새로고침 없이 짠! 바뀝니다)
+            setLevel(2);
+          }}
         />
-      </Routes>
-    </Router>
+      )}
+    </>
   );
 };
 

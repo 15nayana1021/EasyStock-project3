@@ -32,8 +32,9 @@ const BottomNav: React.FC = () => {
           <NavLink
             key={tab.id}
             to={tab.path}
+            id={`tour-bottom-${tab.id}`}
             className={`flex flex-col items-center space-y-1 transition-all duration-200
-              ${active ? 'text-[#2D8C69]' : 'text-gray-300'}
+              ${active ? 'text-[#004FFE]' : 'text-gray-400'}
             `}
           >
             <div className={`p-1 ${active ? 'scale-110' : ''}`}>
@@ -43,7 +44,7 @@ const BottomNav: React.FC = () => {
               {tab.label}
             </span>
             {active && (
-              <div className="w-1 h-1 bg-[#2D8C69] rounded-full mt-0.5"></div>
+              <div className="w-1 h-1 bg-[#004FFE] rounded-full mt-0.5"></div>
             )}
           </NavLink>
         );

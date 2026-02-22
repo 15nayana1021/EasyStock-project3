@@ -8,7 +8,6 @@ class MarketEngine:
         self.companies: Dict[str, Company] = {c.ticker: c for c in get_initial_companies()}
         
         # 2. 오더북 (주문 장부) 초기화
-        # 구조: { "IT008": { "BUY": [], "SELL": [] } }
         self.order_books: Dict[str, Dict[str, List[Order]]] = {
             ticker: {"BUY": [], "SELL": []} for ticker in self.companies.keys()
         }
@@ -68,8 +67,7 @@ class MarketEngine:
             sell_price = best_sell.price if best_sell.price else best_buy.price
 
             if buy_price >= sell_price:
-                # 거래 체결!
-                trade_price = sell_price # 보통 먼저 걸려있던 주문 가격으로 체결됨
+                trade_price = sell_price
                 trade_qty = min(best_buy.quantity, best_sell.quantity)
 
                 # 3. 기록 및 상태 업데이트
@@ -92,17 +90,16 @@ class MarketEngine:
                 best_sell.quantity -= trade_qty
 
                 if best_buy.quantity == 0:
-                    book["BUY"].pop(0) # 대기열에서 삭제
+                    book["BUY"].pop(0)
                     best_buy.status = "FILLED"
                 
                 if best_sell.quantity == 0:
-                    book["SELL"].pop(0) # 대기열에서 삭제
+                    book["SELL"].pop(0)
                     best_sell.status = "FILLED"
                 
                 #print(f"✨ [체결 알림] {ticker} {trade_qty}주 @ {trade_price}원 (현재가 갱신!)")
 
             else:
-                # 가격이 안 맞으면 매칭 종료 (더 볼 필요 없음)
                 break
         
         return executed_trades
@@ -133,7 +130,7 @@ class MarketEngine:
         
         # 1. 데이터 추출 (없으면 기본값 사용)
         sentiment = news_data.get('sentiment', 'neutral')
-        raw_impact = news_data.get('impact_score', 0) # 0~100
+        raw_impact = news_data.get('impact_score', 0)
 
         # 2. 방향(Direction) 결정
         direction = 0
@@ -145,11 +142,9 @@ class MarketEngine:
         clean_impact = abs(raw_impact)
         
         # 3. 변동폭 계산 (점수)
-        # 예: 호재(+1) * 강도(50) = +50점
         score = direction * clean_impact
 
         # 4. 실제 가격에 반영 (게임 밸런스 조절)
-        # 점수 1점당 0.5%씩 변동한다고 가정 (50점이면 25% 급등!)
         volatility_factor = 0.005 
         change_rate = score * volatility_factor
         
@@ -162,7 +157,7 @@ class MarketEngine:
         # 5. 가격 업데이트
         company.current_price = new_price
         
-        print(f"📰 [뉴스 반영] {ticker}: {sentiment} (강도 {impact})")
+        print(f"📰 [뉴스 반영] {ticker}: {sentiment} (강도 {raw_impact})")
         print(f"   ㄴ 주가 변동: {old_price}원 -> {new_price}원 ({change_rate*100:.2f}%)")
 
         return new_price

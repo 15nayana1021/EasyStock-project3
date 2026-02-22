@@ -13,7 +13,6 @@ const AssetsContent: React.FC<AssetsContentProps> = ({
   refreshData,
 }) => {
   useEffect(() => {
-    // 부모로부터 받은 새로고침 함수가 있을 때만 실행
     if (refreshData) {
       const interval = setInterval(() => {
         console.log("🔄 자산 정보 실시간 동기화 중...");
@@ -23,28 +22,34 @@ const AssetsContent: React.FC<AssetsContentProps> = ({
       return () => clearInterval(interval);
     }
   }, [refreshData]);
-  // 1. 데이터 계산
-  const totalStockValue = portfolio.reduce((acc, item) => {
+
+  const stockValue = portfolio.reduce((acc, item) => {
     const price =
       typeof item.current_price === "number"
         ? item.current_price
         : item.average_price;
-    return acc + price * item.quantity;
+
+    // quantity 혹은 sharesCount로 수량 파악
+    const qty =
+      item.quantity !== undefined ? item.quantity : item.sharesCount || 0;
+
+    return acc + price * qty;
   }, 0);
 
-  const totalAsset = cash + totalStockValue;
+  const totalAssets = cash + stockValue;
 
-  const stockRatio =
-    totalAsset > 0 ? Math.round((totalStockValue / totalAsset) * 100) : 0;
-  const cashRatio = totalAsset > 0 ? 100 - stockRatio : 100;
+  // 비중 계산
+  const stockPercent =
+    totalAssets > 0 ? Math.round((stockValue / totalAssets) * 100) : 0;
+  const cashPercent = totalAssets > 0 ? 100 - stockPercent : 100;
 
-  // 2. 디자인 및 차트 구현
+  // 도넛 차트 계산
   const dashTotal = 251.2;
-  const cashOffset = (stockRatio / 100) * dashTotal;
+  const cashOffset = (stockPercent / 100) * dashTotal;
 
   return (
-    <div className="flex flex-col h-full bg-[#E8F3EF] rounded-t-[2.5rem] border border-white/50 shadow-inner overflow-hidden">
-      {/* 헤더 디자인 */}
+    <div className="flex flex-col h-full bg-white rounded-t-[2.5rem] border border-white/50 shadow-inner overflow-hidden">
+      {/* Header */}
       <div className="p-5 pb-3">
         <div className="flex justify-center">
           <h2 className="text-xl font-extrabold text-gray-800 tracking-tight">
@@ -53,32 +58,34 @@ const AssetsContent: React.FC<AssetsContentProps> = ({
         </div>
       </div>
 
+      {/* Internal Scrollable Content */}
       <div className="flex-1 overflow-y-auto px-5 hide-scrollbar pb-32">
         <div className="flex flex-col items-center mt-4">
-          {/* 도넛 차트구현 */}
+          {/* Doughnut Chart Visualization */}
           <div className="relative w-64 h-64 flex items-center justify-center">
+            {/* Simple SVG Doughnut */}
             <svg
               viewBox="0 0 100 100"
               className="w-full h-full transform -rotate-90"
             >
-              {/* 현금 영역 */}
+              {/* Cash Segment (Base) */}
               <circle
                 cx="50"
                 cy="50"
                 r="40"
                 fill="transparent"
-                stroke="#CDE79D"
+                stroke="#DCE6F5"
                 strokeWidth="14"
                 strokeDasharray={`${dashTotal}`}
                 strokeDashoffset="0"
               />
-              {/* 주식 영역 */}
+              {/* Stock Segment (Overlay) */}
               <circle
                 cx="50"
                 cy="50"
                 r="40"
                 fill="transparent"
-                stroke="#2D8C69"
+                stroke="#004FFE"
                 strokeWidth="14"
                 strokeDasharray={`${dashTotal}`}
                 strokeDashoffset={cashOffset}
@@ -87,55 +94,59 @@ const AssetsContent: React.FC<AssetsContentProps> = ({
               />
             </svg>
 
-            {/* 가운데 총 자산 표시 */}
+            {/* Inner Content */}
             <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
               <span className="text-[10px] font-bold text-gray-400 tracking-wider">
                 TOTAL
               </span>
               <span className="text-lg font-black text-gray-800">
-                {totalAsset.toLocaleString()}원
+                {totalAssets.toLocaleString()}원
               </span>
             </div>
 
-            {/* 좌우 둥둥 떠있는 라벨 */}
-            <div className="absolute left-[-5%] top-[55%] flex flex-col items-center bg-white/80 backdrop-blur-sm px-2 py-1 rounded-lg border border-green-100/50 shadow-sm animate-in fade-in duration-700">
-              <span className="text-[10px] font-bold text-[#2D8C69]">주식</span>
-              <span className="text-xs font-black text-[#2D8C69]">
-                {stockRatio}%
+            {/* Labels repositioned to the outer sides to avoid overlap */}
+            {/* Stock Label */}
+            <div className="absolute left-[-8%] top-[55%] flex flex-col items-center bg-white/80 backdrop-blur-sm px-2 py-1 rounded-lg border border-blue-100/50 shadow-sm animate-in fade-in duration-700">
+              <span className="text-[10px] font-bold text-[#004FFE]">주식</span>
+              <span className="text-xs font-black text-[#004FFE]">
+                {stockPercent}%
               </span>
             </div>
 
-            <div className="absolute right-[-5%] top-[35%] flex flex-col items-center bg-white/80 backdrop-blur-sm px-2 py-1 rounded-lg border border-lime-100/50 shadow-sm animate-in fade-in duration-700">
-              <span className="text-[10px] font-bold text-[#8DBA9C]">현금</span>
-              <span className="text-xs font-black text-[#8DBA9C]">
-                {cashRatio}%
+            {/* Cash Label */}
+            <div className="absolute right-[-8%] top-[35%] flex flex-col items-center bg-white/80 backdrop-blur-sm px-2 py-1 rounded-lg border border-blue-100/50 shadow-sm animate-in fade-in duration-700">
+              <span className="text-[10px] font-bold text-[#6EA8FE]">현금</span>
+              <span className="text-xs font-black text-[#6EA8FE]">
+                {cashPercent}%
               </span>
             </div>
           </div>
 
-          {/* 하단 카드 디자인 */}
+          {/* Asset Breakdown Cards */}
           <div className="w-full mt-8 space-y-4">
-            {/* 주식 카드 */}
-            <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-green-50/50 animate-in slide-in-from-bottom-2 duration-300">
-              <div className="bg-gradient-to-r from-[#2D8C69] to-[#68B297] px-4 py-2 flex justify-center">
-                <span className="text-sm font-bold text-gray-700">
-                  주식 {stockRatio}%
+            {/* Stock Card */}
+            <div className="bg-white rounded-2xl overflow-hidden shadow-md border border-[#D6E4F7] animate-in slide-in-from-bottom-2 duration-300">
+              <div className="bg-[#004FFE] px-4 py-2 flex justify-center">
+                <span className="text-sm font-bold text-white">
+                  주식 {stockPercent}%
                 </span>
               </div>
+              <div className="border-t border-[#D6E4F7]"></div>
               <div className="p-4 flex justify-center">
                 <span className="text-xl font-extrabold text-gray-700 tracking-tight">
-                  {totalStockValue.toLocaleString()}원
+                  {stockValue.toLocaleString()}원
                 </span>
               </div>
             </div>
 
-            {/* 현금 카드 */}
-            <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-green-50/50 animate-in slide-in-from-bottom-4 duration-300">
-              <div className="bg-gradient-to-r from-[#8DBA9C] to-[#CDE79D] px-4 py-2 flex justify-center">
-                <span className="text-sm font-bold text-gray-700">
-                  현금 {cashRatio}%
+            {/* Cash Card */}
+            <div className="bg-white rounded-2xl overflow-hidden shadow-md border border-[#D6E4F7] animate-in slide-in-from-bottom-4 duration-300">
+              <div className="bg-[#6EA8FE] px-4 py-2 flex justify-center">
+                <span className="text-sm font-bold text-white">
+                  현금 {cashPercent}%
                 </span>
               </div>
+              <div className="border-t border-[#D6E4F7]"></div>
               <div className="p-4 flex justify-center">
                 <span className="text-xl font-extrabold text-gray-700 tracking-tight">
                   {cash.toLocaleString()}원
@@ -144,6 +155,7 @@ const AssetsContent: React.FC<AssetsContentProps> = ({
             </div>
           </div>
 
+          {/* Decorative hint */}
           <p className="mt-8 text-[11px] text-gray-400 font-medium text-center leading-relaxed">
             포트폴리오 비중을 조절하여
             <br />더 안정적인 투자를 시작해보세요!

@@ -19,10 +19,11 @@ const Sidebar: React.FC = () => {
         <NavLink
           key={tab.id}
           to={tab.path}
+          id={`tour-sidebar-${tab.id}`}
           className={({ isActive }) => `
             w-12 h-14 flex flex-col items-center justify-center rounded-2xl transition-all duration-200
             ${isActive
-              ? 'bg-[#2D8C69] text-white shadow-md' 
+              ? 'bg-[#004FFE] text-white shadow-md' 
               : 'text-gray-400 hover:bg-gray-50'
             }
           `}

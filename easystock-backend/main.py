@@ -8,19 +8,18 @@ from datetime import datetime
 import aiosqlite
 from pydantic import BaseModel
 from urllib.parse import unquote
+from collections import defaultdict
+from sqlalchemy import or_
+from core.mentor_brain import chat_with_mentor
 
 # 엔진과 모델 임포트
 
-from database import init_db
+from database import init_db, SessionLocal, DBCompany, DBAgent
 from routers import trade, social, news
-from core.market_engine import MarketEngine  # 진짜 엔진
 from models.domain_models import Order, OrderType, OrderSide, Agent # 주문 모델
-import os
-print("\n" + "="*50)
-print(f"📢 [긴급 체크] 현재 백엔드가 실행되는 폴더: {os.getcwd()}")
-print(f"📢 [긴급 체크] 예상하는 DB 위치: {os.path.abspath('stock_game.db')}")
-print(f"📢 [긴급 체크] DB 파일 존재 여부: {os.path.exists('stock_game.db')}")
-print("="*50 + "\n")
+from team_api import router as team_router
+from main_simulation import market_engine as engine, run_simulation_loop
+import main_simulation
 
 # [전역 설정]
 TARGET_TICKERS = [
@@ -53,11 +52,15 @@ COMPANY_CATEGORIES = {
     "선우솔루션": "금융", "퀀텀디지털": "금융", "예진캐피탈": "금융"
 }
 
+TICKER_MAP = {
+    "삼송전자": "SS011", "재웅시스템": "JW004", "에이펙스테크": "AT010",
+    "마이크로하드": "MH012", "소현컴퍼니": "SH001", "넥스트데이터": "ND008",
+    "진호랩": "JH005", "상은테크놀로지": "SE002", "인사이트애널리틱스": "IA009",
+    "선우솔루션": "SW006", "퀀텀디지털": "QD007", "예진캐피탈": "YJ003"
+}
+
 # 🏆 [랭킹 점수판] 
 hot_scores = {ticker: 0 for ticker in TARGET_TICKERS}
-
-# 엔진 초기화
-engine = MarketEngine()
 
 # 초기 데이터 (전역 변수 - 종목별 관리)
 current_news_display = "장 시작 준비 중..."
@@ -70,171 +73,81 @@ news_history_storage = []
 async def simulate_market_background():
     global current_news_display, price_history, current_mentor_comments
     
-    print("🚀 [시스템] 마켓 엔진 재가동 (가격 변동 ON / 자동 체결 OFF)")
+    print("🚀 [시스템] 유저 주문 모니터링 시작 (기존 엔진 로직 제거됨)")
     
-    # 1. DB 연결
+    # 1. DB 연결 (유지)
     db = await aiosqlite.connect("stock_game.db", timeout=30.0)
     await db.execute("PRAGMA journal_mode=WAL;") 
     db.row_factory = aiosqlite.Row
 
-    try:
-        for ticker in TARGET_TICKERS:
-            cursor = await db.execute("SELECT * FROM stocks WHERE company_name = ?", (ticker,))
-            row = await cursor.fetchone()
-            
-            if row:
-                start_price = row['current_price']
-            else:
-                start_price = INITIAL_PRICES.get(ticker, 10000)
-                await db.execute("INSERT OR IGNORE INTO stocks (symbol, company_name, current_price) VALUES (?, ?, ?)", 
-                                    (ticker, ticker, start_price))
-            
-            # 엔진 메모리에 등록
-            if ticker not in engine.companies:
-                from models.domain_models import Company
-                sector = COMPANY_CATEGORIES.get(ticker, "기타")
-                
-                new_comp = Company(
-                    ticker=ticker, 
-                    name=ticker, 
-                    sector=sector,
-                    description=f"{ticker} 종목입니다.", 
-                    current_price=float(start_price), 
-                    total_shares=1000000,
-                    change_rate=0.0
-                )
-                engine.companies[ticker] = new_comp
-                engine.order_books[ticker] = {"BUY": [], "SELL": []}
-
-        await db.commit()
-        print("✅ [시스템] 모든 종목 등록 완료!")
-
-        # 2. 시초가 저장 (등락률 계산용)
-        start_prices = {} 
-        for ticker, info in engine.companies.items():
-            start_prices[ticker] = info.current_price
-
-        # 3. [무한 루프] 이제 장을 시작합니다!
+    try:     
+        # 3. [무한 루프] 
         loop_count = 0
         while True:
             await asyncio.sleep(1) 
             loop_count += 1
-            
-            # A. 등락률(Change Rate) 실시간 계산
-            for ticker in engine.companies:
-                current_price = engine.companies[ticker].current_price
-                start_price = start_prices.get(ticker, current_price)
-                
-                if start_price > 0:
-                    change_rate = ((current_price - start_price) / start_price) * 100
-                    engine.companies[ticker].change_rate = round(change_rate, 2)
-
-            # B. 뉴스 로테이션
-            # if loop_count % 30 == 0:
-            #     target_ticker = random.choice(TARGET_TICKERS)
-            
-            #     # 뉴스 템플릿 (상승/하락/일반)
-            #     news_templates = [
-            #         f"{target_ticker}, 차세대 핵심 기술 개발 성공 소식에 '강세'",
-            #         f"외국인, {target_ticker} 10일 연속 순매수... 주가 기대감↑",
-            #         f"{target_ticker}, 경쟁 심화 우려에 주가 소폭 하락세",
-            #         f"{target_ticker} 경영진, 자사주 매입 발표... 주주가치 제고",
-            #         f"[특징주] {target_ticker}, 3분기 실적 어닝 서프라이즈 달성",
-            #         f"{target_ticker}, 글로벌 파트너사와 대규모 공급 계약 체결"
-            #     ]
-                
-            #     news_templates = [
-            #         f"{target_ticker}, 차세대 핵심 기술 개발 성공",
-            #         f"외국인, {target_ticker} 10일 연속 순매수 행진",
-            #         f"{target_ticker}, 경쟁 심화 우려에 주가 숨고르기",
-            #         f"{target_ticker} 경영진, 주주가치 제고 위해 자사주 매입",
-            #         f"[특징주] {target_ticker}, 3분기 실적 호조 예상",
-            #         f"{target_ticker}, 글로벌 기업과 대규모 공급 계약 체결"
-            #     ]
-            #     title = random.choice(news_templates)
-            #     source = "Stocky News"
-            #     time_str = datetime.now().strftime("%m.%d %H:%M")
-
-            #     await db.execute("""
-            #         INSERT INTO news (ticker, title, source, created_at)
-            #         VALUES (?, ?, ?, ?)
-            #     """, (target_ticker, title, source, time_str))
-                
-            #     await db.commit()
-            #     print(f"📰 [DB 저장] {title}")
-
-            # C. 주가 변동 (랜덤 워크)
-            for ticker in TARGET_TICKERS:
-                if ticker not in engine.companies: continue
-                
-                current_p = engine.companies[ticker].current_price
-                spread = random.randint(-500, 500) 
-                order_price = int(current_p + spread)
-                if order_price < 10: order_price = 10
-                
-                # 엔진 & DB 업데이트
-                engine.companies[ticker].current_price = order_price
-                if ticker in hot_scores: hot_scores[ticker] += 1
-                
-                if order_price != current_p:
-                    await db.execute("UPDATE stocks SET current_price = ? WHERE company_name = ?", (order_price, ticker))
-                    await db.commit()
-
-                # 히스토리 저장
-                price_history[ticker].append({"time": datetime.now().strftime("%H:%M:%S"), "price": order_price})
-                if len(price_history[ticker]) > 30: price_history[ticker].pop(0)
-
-            # D. 대기 주문(PENDING) 체결 처리
+            """
             async with db.execute("SELECT * FROM orders WHERE status = 'PENDING'") as cursor:
                 pending_orders = await cursor.fetchall()
 
             for db_order in pending_orders:
-                o_id = db_order['id']
-                user_id = db_order['user_id']
-                ticker = db_order['company_name']
-                side = db_order['order_type']
-                price = db_order['price']
-                qty = db_order['quantity']
-                
-                if ticker not in engine.companies: continue
-                current_market_price = engine.companies[ticker].current_price
-
-                # 체결 조건 확인
-                is_match = False
-                if side == "BUY" and current_market_price <= price: # 싸게 나오면 산다
-                    is_match = True
-                elif side == "SELL" and current_market_price >= price: # 비싸게 나오면 판다
-                    is_match = True
-                
-                if is_match:
-                        await db.execute("UPDATE orders SET status = 'FILLED' WHERE id = ?", (o_id,))
-                        
-                        if side == "BUY":
-                            await db.execute("""
-                                INSERT INTO holdings (user_id, company_name, quantity, average_price) 
-                                VALUES (?, ?, ?, ?) 
-                                ON CONFLICT(user_id, company_name) 
-                                DO UPDATE SET quantity = quantity + ?, average_price = (average_price * quantity + ? * ?) / (quantity + ?)
-                            """, (user_id, ticker, qty, price, qty, price, qty, qty))
-                            
-                        elif side == "SELL":
-                            income = price * qty
-                            await db.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (income, user_id))
-
-                        print(f"🎉 [엔진 체결] {ticker} {qty}주 {side} 완료! (ID: {o_id})")
+                # ... 기존 체결 로직 ...
+            """
 
     except Exception as e:
-        print(f"❌ 엔진 에러: {e}")
+        print(f"❌ 모니터링 에러: {e}")
     finally:
         await db.close()
+
+def seed_database():
+    with SessionLocal() as db:
+        print("🌱 [시스템] DB 데이터를 보존하며 INITIAL_PRICES를 동기화합니다...")
+        
+        for name, price in INITIAL_PRICES.items():
+            correct_ticker = TICKER_MAP.get(name, name)
+            company = db.query(DBCompany).filter(DBCompany.name == name).first()
+            
+            if company:
+                company.ticker = correct_ticker
+                company.current_price = float(price)
+            else:
+                new_comp = DBCompany(
+                    ticker=correct_ticker,
+                    name=name, 
+                    current_price=float(price),
+                    change_rate=0.0
+                )
+                db.add(new_comp)
+        
+        db.commit()
+
+        if db.query(DBAgent).count() == 0:
+            print("🤖 [시스템] AI 에이전트 30명을 시장에 투입합니다...")
+            agents = [
+                DBAgent(agent_id=f"Agent_Bot_{i}", cash_balance=100000000, portfolio={}, psychology={})
+                for i in range(1, 31)
+            ]
+            db.add_all(agents)
+            db.commit()
+            
+        print("✅ [시스템] 주식 가격 및 영어 코드(Ticker) 동기화 완료!")
 
 # [FastAPI 앱 설정]
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await init_db()
-    task = asyncio.create_task(simulate_market_background())
-    yield
-    #task.cancel()
+    seed_database() 
+    
+    # 2. 기존 시뮬레이션 가동 코드 (유지)
+    main_simulation.running = True
+    asyncio.create_task(run_simulation_loop())
+    print("🚀 [통합 완료] 시뮬레이션과 서버가 한 몸으로 가동됩니다!")
+    
+    yield 
+
+    # 3. 종료 코드 (유지)
+    print("🛑 서버 종료 신호 감지! 시뮬레이션을 안전하게 중단합니다.")
+    main_simulation.running = False
+    await asyncio.sleep(1)
 
 app = FastAPI(lifespan=lifespan)
 
@@ -247,7 +160,7 @@ origins = [
 # 2. 미들웨어를 설정합니다.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -256,6 +169,7 @@ app.add_middleware(
 app.include_router(trade.router)
 app.include_router(social.router, prefix="/api/social", tags=["Social & Ranking"])
 app.include_router(news.router)
+app.include_router(team_router, prefix="/team", tags=["Team API"])
 
 @app.get("/api/market-data")
 async def get_market_data(ticker: str = "삼송전자"):
@@ -291,37 +205,22 @@ async def get_market_data(ticker: str = "삼송전자"):
     }
 
 @app.get("/api/stocks")
-async def get_stock_list():
-    """
-    [주식 목록 조회]
-    12개 기업의 현재가, 등락률, 그리고 '카테고리(sector)' 정보를 반환합니다.
-    """
-    result = []
-    
-    for ticker in TARGET_TICKERS:
-        # 1. 현재 가격 가져오기 (엔진에 없으면 초기값 사용)
-        if ticker in engine.companies:
-            current_price = int(engine.companies[ticker].current_price)
-        else:
-            current_price = INITIAL_PRICES.get(ticker, 10000)
-            
-        # 2. 등락률 계산
-        start_price = INITIAL_PRICES.get(ticker, current_price)
-        if start_price == 0:
-            change_rate = 0.0
-        else:
-            change_rate = ((current_price - start_price) / start_price) * 100
-            
-        # 3. 데이터 조립 (여기서 sector 정보를 정확히 넣어줍니다!)
-        result.append({
-            "ticker": ticker,
-            "name": ticker,
-            "sector": COMPANY_CATEGORIES.get(ticker, "기타"), 
-            "price": current_price,
-            "change_rate": round(change_rate, 2)
-        })
-        
-    return result
+async def get_all_stocks():
+    try:
+        with SessionLocal() as db:
+            companies = db.query(DBCompany).all()
+            result = []
+            for c in companies:
+                result.append({
+                    "ticker": str(c.ticker) if c.ticker else "UNKNOWN",
+                    "name": str(c.name) if c.name else "알 수 없음",
+                    "current_price": int(c.current_price) if c.current_price is not None else 0,
+                    "change_rate": float(c.change_rate) if hasattr(c, 'change_rate') and c.change_rate is not None else 0.0
+                })
+            return result
+    except Exception as e:
+        print(f"❌ 목록 로딩 에러: {e}")
+        return []
 # 로그인 및 회원가입 API
 class LoginRequest(BaseModel):
     nickname: str
@@ -358,6 +257,20 @@ async def login_user(request: LoginRequest):
         "message": f"Welcome {request.nickname}!", 
         "user_id": real_user_id
     }
+
+class ChatRequest(BaseModel):
+    agent_type: str
+    message: str
+
+#챗봇
+@app.post("/api/chat")
+async def chat_endpoint(req: ChatRequest):
+    try:
+        reply = await chat_with_mentor(req.agent_type, req.message)
+        return {"reply": reply}
+    except Exception as e:
+        print(f"❌ 챗봇 응답 에러: {e}")
+        return {"reply": "앗, 뇌 회로에 잠시 과부하가 왔어요! 조금만 이따가 다시 질문해주세요."}
 
 # 2. 내 자산 정보 API (프론트엔드 연동용)
 @app.get("/users/me/portfolio")
@@ -440,23 +353,38 @@ async def get_stock_chart(ticker: str, period: str = "1d"):
 # 3. 호가창 데이터 API (프론트엔드 fetchOrderBook 대응)
 @app.get("/api/stocks/{ticker}/orderbook")
 async def get_stock_orderbook(ticker: str):
-    if ticker not in engine.companies:
-        return {"error": "Stock not found"}
-    
-    comp = engine.companies[ticker]
-    book = engine.order_books.get(ticker, {"BUY": [], "SELL": []})
-    
+    with SessionLocal() as db:
+        company = db.query(DBCompany).filter(
+            or_(DBCompany.ticker == ticker, DBCompany.name == ticker)
+        ).first()
+
+        if not company:
+            return {"error": "Stock not found"}
+
+        actual_ticker = company.ticker
+        current_price = int(company.current_price)
+
+    book = engine.order_books.get(actual_ticker, {"SELL": [], "BUY": []})
+
+    # 💡 1. 매도(SELL) 주문을 같은 가격끼리 묶어서 수량(volume)을 더합니다!
+    ask_summary = defaultdict(int)
+    for o in book.get("SELL", []):
+        ask_summary[int(o["price"])] += o["quantity"]
+        
+    # 💡 2. 매수(BUY) 주문도 같은 가격끼리 묶어줍니다!
+    bid_summary = defaultdict(int)
+    for o in book.get("BUY", []):
+        bid_summary[int(o["price"])] += o["quantity"]
+
+    # 3. 묶여진 데이터를 가격 순서대로 정렬하고 5개만 자릅니다.
+    asks = [{"price": p, "volume": v} for p, v in sorted(ask_summary.items())][:5]
+    bids = [{"price": p, "volume": v} for p, v in sorted(bid_summary.items(), reverse=True)][:5]
+
     return {
-        "ticker": ticker,
-        "current_price": int(comp.current_price),
-        "asks": book.get("SELL", [
-            {"price": int(comp.current_price + 100), "volume": 10},
-            {"price": int(comp.current_price + 200), "volume": 50}
-        ]),
-        "bids": book.get("BUY", [
-            {"price": int(comp.current_price - 100), "volume": 20},
-            {"price": int(comp.current_price - 200), "volume": 100}
-        ])
+        "ticker": actual_ticker,
+        "current_price": current_price,
+        "asks": asks,
+        "bids": bids
     }
 
 @app.get("/api/stocks/{ticker}/news")
@@ -478,39 +406,38 @@ async def get_stock_news(ticker: str):
 
 @app.get("/api/ranking/hot")
 def get_hot_ranking():
+    # 1. 인기 점수(hot_scores) 기준 정렬
     sorted_ranking = sorted(hot_scores.items(), key=lambda x: x[1], reverse=True)[:12]
-
-    response_data = []
     
-    for rank, (ticker_name, score) in enumerate(sorted_ranking, 1):
-        
-        # A. 실시간 현재가 가져오기 (엔진에서 조회)
-        if ticker_name in engine.companies:
-            current_price = int(engine.companies[ticker_name].current_price)
-        else:
-            current_price = INITIAL_PRICES.get(ticker_name, 0)
+    response_data = []
+    with SessionLocal() as db:
+        for rank, (ticker_name, score) in enumerate(sorted_ranking, 1):
+            company = db.query(DBCompany).filter(
+                or_(DBCompany.ticker == ticker_name, DBCompany.name == ticker_name)
+            ).first()
+            
+            if company:
+                price = int(company.current_price) if company.current_price else 0
+                change = float(company.change_rate) if hasattr(company, 'change_rate') and company.change_rate else 0.0
+                name = company.name if company.name else ticker_name
+                symbol = company.ticker
+            else:
+                # DB에 정말 없을 경우
+                price = 0
+                change = 0.0
+                name = ticker_name
+                symbol = ticker_name
 
-        # B. 시작 가격 가져오기 (등락률 계산용)
-        initial_price = INITIAL_PRICES.get(ticker_name, current_price)
-
-        # C. 등락률(Change Rate) 계산
-        if initial_price == 0:
-            change_rate = 0.0
-        else:
-            change_rate = ((current_price - initial_price) / initial_price) * 100
-        
-        # D. 데이터 조립
-        response_data.append({
-            "rank": rank,
-            "ticker": ticker_name,
-            "name": ticker_name,
-            "score": score,
-            "current_price": current_price,
-            "change_rate": round(change_rate, 2)
-        })
+            response_data.append({
+                "rank": rank,
+                "ticker": symbol,
+                "name": name,
+                "score": score,
+                "current_price": price,
+                "change_rate": round(change, 2)
+            })
             
     return response_data
-
 @app.get("/api/news")
 async def get_all_news():
     async with aiosqlite.connect("stock_game.db") as db:

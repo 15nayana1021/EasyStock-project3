@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
 import { ChevronLeft, Plus, Send, List, Check } from "lucide-react";
 
+// 🔥 [추가] api.ts에서 챗봇 API 불러오기 (경로에 맞게 수정해주세요)
+import { fetchAgentChat } from "../services/api";
+
 interface Message {
   id: number;
   sender: "ai" | "user";
@@ -16,6 +19,8 @@ interface Agent {
   avatarSeed: string;
   bgColor: string;
   type: "fox" | "wolf" | "dog" | "owl";
+  imageUrl: string;
+  backendType: string; // 🔥 [추가] 백엔드의 MentorType과 매칭하기 위한 키
 }
 
 interface ChatbotContentProps {
@@ -25,11 +30,13 @@ interface ChatbotContentProps {
 const agents: Agent[] = [
   {
     id: 1,
-    name: "전략형 여우",
+    name: "공격적 여우",
     desc: "시장 흐름 중심 분석",
     avatarSeed: "Garrett",
     bgColor: "bg-[#FFEDD5]",
     type: "fox",
+    imageUrl: "/Aggressive_Fox.png",
+    backendType: "MOMENTUM", // 백엔드 공격형 멘토 연결
   },
   {
     id: 2,
@@ -38,14 +45,18 @@ const agents: Agent[] = [
     avatarSeed: "Felix",
     bgColor: "bg-[#E0F2FE]",
     type: "wolf",
+    imageUrl: "/Stable_Fox.png",
+    backendType: "VALUE", // 백엔드 가치투자자 연결
   },
   {
     id: 3,
-    name: "신중형 여우",
+    name: "비관적 여우",
     desc: "보수적 시나리오 점검",
     avatarSeed: "Buster",
     bgColor: "bg-[#F3F4F6]",
     type: "dog",
+    imageUrl: "/Pessimistic_Fox.png",
+    backendType: "CONTRARIAN", // 백엔드 역발상 멘토 연결
   },
   {
     id: 4,
@@ -54,6 +65,8 @@ const agents: Agent[] = [
     avatarSeed: "Bandit",
     bgColor: "bg-[#FEF3C7]",
     type: "owl",
+    imageUrl: "/Mentor_Owl.png",
+    backendType: "NEUTRAL", // 백엔드 가이드 연결
   },
 ];
 
@@ -80,7 +93,6 @@ const ChatbotContent: React.FC<ChatbotContentProps> = ({ onBack }) => {
   const handleStartChat = () => {
     if (selectedAgentIds.length === 0) return;
 
-    // 초기 환영 메시지 생성
     const welcomeMessages: Message[] = selectedAgentIds.map((id, index) => {
       const agent = agents.find((a) => a.id === id);
       return {
@@ -99,13 +111,15 @@ const ChatbotContent: React.FC<ChatbotContentProps> = ({ onBack }) => {
     setStep("chat");
   };
 
-  const handleSendMessage = () => {
+  // 🔥 [핵심 수정] 가짜 데이터 제거 및 실제 LLM 연동 로직
+  const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
 
+    const currentInput = inputValue;
     const userMsg: Message = {
       id: Date.now(),
       sender: "user",
-      text: inputValue,
+      text: currentInput,
       timestamp: new Date().toLocaleTimeString("ko-KR", {
         hour: "2-digit",
         minute: "2-digit",
@@ -113,28 +127,65 @@ const ChatbotContent: React.FC<ChatbotContentProps> = ({ onBack }) => {
     };
 
     setMessages((prev) => [...prev, userMsg]);
-    const currentInput = inputValue;
     setInputValue("");
 
-    // 선택된 모든 에이전트가 순차적으로 응답
-    selectedAgentIds.forEach((agentId, index) => {
-      setTimeout(
-        () => {
-          const agent = agents.find((a) => a.id === agentId);
-          const aiMsg: Message = {
-            id: Date.now() + 1 + index,
-            sender: "ai",
-            text: `[${agent?.name}] '${currentInput}'에 대한 분석 의견을 드립니다.`,
-            timestamp: new Date().toLocaleTimeString("ko-KR", {
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
-            agentId: agentId,
-          };
-          setMessages((prev) => [...prev, aiMsg]);
+    // 선택된 모든 에이전트에게 동시에 API 요청 시작
+    selectedAgentIds.forEach(async (agentId) => {
+      const agent = agents.find((a) => a.id === agentId);
+      if (!agent) return;
+
+      const loadingMsgId = Date.now() + Math.random(); // 고유 ID 부여
+
+      // 1. "고민 중..." 임시 메시지 띄우기
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: loadingMsgId,
+          sender: "ai",
+          text: `[${agent.name}] 답변을 고민 중입니다... 🤔`,
+          timestamp: new Date().toLocaleTimeString("ko-KR", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          agentId: agentId,
         },
-        1000 + index * 800,
-      ); // 약간의 시차를 두고 응답
+      ]);
+
+      try {
+        // 2. 백엔드 API 호출 (실제 GPT 통신)
+        const responseText = await fetchAgentChat(
+          agent.backendType,
+          currentInput,
+        );
+
+        // 3. 로딩 메시지를 실제 답변으로 교체
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === loadingMsgId
+              ? {
+                  ...msg,
+                  text: responseText,
+                  timestamp: new Date().toLocaleTimeString("ko-KR", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  }),
+                }
+              : msg,
+          ),
+        );
+      } catch (error) {
+        // 에러 발생 시 처리
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === loadingMsgId
+              ? {
+                  ...msg,
+                  text: "앗, 통신에 문제가 생겼습니다. 다시 질문해주세요!",
+                }
+              : msg,
+          ),
+        );
+      }
     });
   };
 
@@ -142,24 +193,16 @@ const ChatbotContent: React.FC<ChatbotContentProps> = ({ onBack }) => {
     fileInputRef.current?.click();
   };
 
-  // 에이전트 선택 화면 렌더링
   if (step === "select") {
     return (
-      <div className="flex flex-col h-full bg-[#F4F8F6] relative animate-in fade-in duration-300">
-        {/* Header */}
-        <div className="px-5 pt-8 pb-4 flex items-center justify-between shrink-0">
-          <button
-            onClick={onBack}
-            className="text-[#1A334E] hover:opacity-70 transition-opacity"
-          >
-            <ChevronLeft size={32} strokeWidth={2.5} />
-          </button>
+      <div className="flex flex-col h-full bg-[#e1eaf5] relative animate-in fade-in duration-300">
+        <div className="px-5 pt-8 pb-4 flex items-center justify-end shrink-0">
           <button
             onClick={handleStartChat}
             disabled={selectedAgentIds.length === 0}
             className={`px-5 py-2.5 rounded-2xl font-black text-[13px] tracking-tight transition-all ${
               selectedAgentIds.length > 0
-                ? "bg-[#E9EEF3] text-[#7A9BB5] shadow-sm"
+                ? "bg-[#004FFE] text-white shadow-md active:scale-95"
                 : "bg-gray-100 text-gray-300 cursor-not-allowed"
             }`}
           >
@@ -179,25 +222,24 @@ const ChatbotContent: React.FC<ChatbotContentProps> = ({ onBack }) => {
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 pb-10 hide-scrollbar content-start">
-          <div className="grid grid-cols-2 gap-x-4 gap-y-6">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-4">
             {agents.map((agent) => {
               const isSelected = selectedAgentIds.includes(agent.id);
               return (
                 <div
                   key={agent.id}
                   onClick={() => toggleAgent(agent.id)}
-                  className={`relative rounded-[2rem] p-6 pb-8 flex flex-col items-center text-center transition-all cursor-pointer border-2 shadow-sm ${
+                  className={`relative rounded-[1.2rem] flex flex-col items-center text-center transition-all cursor-pointer border-2 shadow-sm overflow-hidden ${
                     isSelected
-                      ? "bg-white border-transparent ring-2 ring-[#2D8C69]/30"
-                      : "bg-white border-transparent hover:border-gray-100"
+                      ? "bg-white border-[#004FFE] ring-1 ring-[#004FFE]/30"
+                      : "bg-white border-gray-100 hover:border-gray-200"
                   }`}
                 >
-                  {/* Radio-style check circle */}
                   <div
-                    className={`absolute top-4 left-4 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
+                    className={`absolute top-3 left-3 w-6 h-6 rounded-full flex items-center justify-center transition-all z-10 ${
                       isSelected
-                        ? "bg-[#2D8C69] border-[#2D8C69] scale-110 shadow-sm"
-                        : "bg-[#F4F8F6] border-[#D1DFD9]"
+                        ? "bg-[#004FFE] shadow-sm"
+                        : "bg-white border-2 border-gray-200"
                     }`}
                   >
                     {isSelected && (
@@ -205,23 +247,28 @@ const ChatbotContent: React.FC<ChatbotContentProps> = ({ onBack }) => {
                     )}
                   </div>
 
-                  {/* Avatar Container */}
                   <div
-                    className={`w-24 h-24 rounded-full ${agent.bgColor} mb-4 overflow-hidden flex items-center justify-center border-4 border-white shadow-inner`}
+                    className="w-full aspect-square relative overflow-hidden"
+                    style={{
+                      background:
+                        "linear-gradient(135deg, #f8fdf6 0%, #eef6e8 30%, #f5f5dc 60%, #fefce8 100%)",
+                    }}
                   >
                     <img
-                      src={`https://api.dicebear.com/7.x/big-ears-neutral/svg?seed=${agent.avatarSeed}`}
+                      src={agent.imageUrl}
                       alt={agent.name}
-                      className="w-[85%] h-[85%] object-contain mt-1"
+                      className="w-full h-full object-contain p-2"
                     />
                   </div>
 
-                  <h3 className="font-black text-[#1A334E] text-base mb-1 tracking-tight">
-                    {agent.name}
-                  </h3>
-                  <p className="text-[11px] text-gray-400 font-bold break-keep leading-tight">
-                    {agent.desc}
-                  </p>
+                  <div className="px-3 py-3">
+                    <h3 className="font-black text-[#1A334E] text-[14px] mb-0.5 tracking-tight">
+                      {agent.name}
+                    </h3>
+                    <p className="text-[10px] text-gray-400 font-bold break-keep leading-tight">
+                      {agent.desc}
+                    </p>
+                  </div>
                 </div>
               );
             })}
@@ -231,11 +278,9 @@ const ChatbotContent: React.FC<ChatbotContentProps> = ({ onBack }) => {
     );
   }
 
-  // 채팅 화면 렌더링
   return (
-    <div className="flex flex-col h-full bg-[#E9EEF3] overflow-hidden font-['Pretendard'] animate-in slide-in-from-right duration-300">
-      {/* Chat Header */}
-      <div className="bg-[#2D8C69] px-4 py-3 flex items-center justify-between shadow-md shrink-0 z-20">
+    <div className="flex flex-col h-full bg-[#e1eaf5] overflow-hidden font-['Pretendard'] animate-in slide-in-from-right duration-300">
+      <div className="bg-[#004FFE] px-4 py-3 flex items-center justify-between shadow-md shrink-0 z-20">
         <div className="flex items-center">
           <button
             onClick={() => setStep("select")}
@@ -243,12 +288,12 @@ const ChatbotContent: React.FC<ChatbotContentProps> = ({ onBack }) => {
           >
             <ChevronLeft size={24} />
           </button>
-          <div className="flex flex-col">
+          <div className="flex items-baseline space-x-2">
             <h2 className="text-white font-bold text-lg leading-none">
               AI 투자 조언
             </h2>
-            <span className="text-[10px] text-white/80 font-medium">
-              {selectedAgentIds.length}명의 에이전트와 대화 중
+            <span className="text-[11px] text-white/70 font-medium">
+              ({selectedAgentIds.length}명의 에이전트와 대화 중..)
             </span>
           </div>
         </div>
@@ -257,7 +302,6 @@ const ChatbotContent: React.FC<ChatbotContentProps> = ({ onBack }) => {
         </button>
       </div>
 
-      {/* Chat Messages Area */}
       <div
         ref={scrollRef}
         className="flex-1 overflow-y-auto px-4 pt-6 pb-6 hide-scrollbar space-y-6"
@@ -276,10 +320,10 @@ const ChatbotContent: React.FC<ChatbotContentProps> = ({ onBack }) => {
               {!isUser && (
                 <div className="flex flex-col items-center space-y-1 self-start">
                   <div
-                    className={`w-10 h-10 rounded-full ${agent?.bgColor || "bg-white"} border border-gray-100 shadow-sm overflow-hidden flex items-center justify-center p-1`}
+                    className={`w-10 h-10 rounded-full ${agent?.bgColor || "bg-white"} border border-gray-100 shadow-sm overflow-hidden flex items-center justify-center`}
                   >
                     <img
-                      src={`https://api.dicebear.com/7.x/big-ears-neutral/svg?seed=${agent?.avatarSeed || "Felix"}`}
+                      src={agent?.imageUrl || "/Stable_Fox.png"}
                       alt="AI"
                       className="w-full h-full object-contain"
                     />
@@ -291,9 +335,9 @@ const ChatbotContent: React.FC<ChatbotContentProps> = ({ onBack }) => {
               )}
 
               <div
-                className={`max-w-[70%] px-4 py-3 rounded-[1.5rem] shadow-sm text-sm font-bold leading-relaxed ${
+                className={`max-w-[70%] px-4 py-3 rounded-[1.5rem] shadow-sm text-sm font-bold leading-relaxed whitespace-pre-wrap ${
                   isUser
-                    ? "bg-[#2D8C69] text-white rounded-tr-none"
+                    ? "bg-[#004FFE] text-white rounded-tr-none"
                     : "bg-white text-gray-800 rounded-tl-none border border-white"
                 }`}
               >
@@ -308,8 +352,7 @@ const ChatbotContent: React.FC<ChatbotContentProps> = ({ onBack }) => {
         })}
       </div>
 
-      {/* Chat Input Bar - Adjusted with margin to avoid overlap with BottomNav */}
-      <div className="px-4 pt-2 pb-28 bg-gradient-to-t from-[#E9EEF3] via-[#E9EEF3] to-transparent shrink-0">
+      <div className="px-4 pt-2 pb-28 bg-gradient-to-t from-[#e1eaf5] via-[#e1eaf5] to-transparent shrink-0">
         <div className="bg-white rounded-full p-2 flex items-center shadow-lg border border-white">
           <input
             type="file"
@@ -319,7 +362,7 @@ const ChatbotContent: React.FC<ChatbotContentProps> = ({ onBack }) => {
           />
           <button
             onClick={handleFileClick}
-            className="p-2 text-[#2D8C69] hover:bg-green-50 rounded-full transition-colors"
+            className="p-2 text-[#004FFE] hover:bg-[#F5F8FC] rounded-full transition-colors"
           >
             <Plus size={24} />
           </button>
@@ -327,7 +370,13 @@ const ChatbotContent: React.FC<ChatbotContentProps> = ({ onBack }) => {
             type="text"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
+            onKeyDown={(e) => {
+              // 한글 조합 중 엔터 쳐질 때 두 번 입력되는 현상 방지
+              if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                handleSendMessage();
+              }
+            }}
             placeholder="메시지를 입력하세요..."
             className="flex-1 bg-transparent border-none outline-none text-sm font-bold text-gray-700 placeholder-gray-300 px-2"
           />
@@ -336,7 +385,7 @@ const ChatbotContent: React.FC<ChatbotContentProps> = ({ onBack }) => {
             disabled={!inputValue.trim()}
             className={`w-10 h-10 rounded-full flex items-center justify-center shadow-md transition-all ${
               inputValue.trim()
-                ? "bg-[#2D8C69] text-white"
+                ? "bg-[#004FFE] text-white"
                 : "bg-gray-100 text-gray-300"
             }`}
           >
