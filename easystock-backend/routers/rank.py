@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 import aiosqlite
 from database import get_db_connection
+import os
 
 router = APIRouter(prefix="/api/rank", tags=["Ranking"])
 

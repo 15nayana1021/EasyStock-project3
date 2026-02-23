@@ -4,9 +4,12 @@ import aiosqlite
 from database import get_db_connection
 from services.gamification import gain_exp, check_quest
 from models.domain_models import Order, OrderType, OrderSide
+from database import DB_PATH
+import os
 
 router = APIRouter(prefix="/api/trade", tags=["Trade"])
 
+DB_PATH = "/home/site/wwwroot/stock_game.db" if os.getenv("WEBSITE_HOSTNAME") else "stock_game.db"
 
 # 1. 데이터 모델 (Schema)
 class UserCreate(BaseModel):
@@ -315,7 +318,7 @@ async def place_order(req: OrderRequest):
     target_ticker = req.ticker if req.ticker else req.company_name
     side = req.side.upper() if req.side else "BUY"
 
-    async with aiosqlite.connect("stock_game.db", timeout=30.0) as db:
+    async with aiosqlite.connect("DB_PATH", timeout=30.0) as db:
         db.row_factory = aiosqlite.Row
 
         try:

@@ -21,7 +21,7 @@ try:
     from core.agent_service import StockAgentService
     from database import DB_NAME 
 except ImportError:
-    DB_NAME = "stock_game.db"
+    DB_PATH = "/home/site/wwwroot/stock_game.db" if os.getenv("WEBSITE_HOSTNAME") else "stock_game.db"
     from core.agent_service import StockAgentService
 
 # 가상 뉴스 전용 10개 기업 리스트

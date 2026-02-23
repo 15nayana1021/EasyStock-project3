@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, Header, Path, Query
 import aiosqlite
 from database import get_db_connection
 import os
+from database import DB_PATH
 
 try:
     from services.gamification import gain_exp, check_quest
@@ -12,7 +13,7 @@ except ImportError:
 router = APIRouter(prefix="/api/news", tags=["News"])
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_PATH = os.path.join(BASE_DIR, "stock_game.db")
+DB_PATH = os.path.join(BASE_DIR, "DB_PATH")
 
 # 1. 뉴스 목록 조회 (회사명 필터링 추가)
 @router.get("")

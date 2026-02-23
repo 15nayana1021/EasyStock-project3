@@ -9,6 +9,7 @@ from core.team_market_engine import MarketEngine
 from community_manager import post_comment 
 from models.domain_models import Order, OrderSide, OrderType, AgentState
 from core.agent_society_brain import agent_society_think
+import os
 
 # ------------------------------------------------------------------
 # 0. 로깅 및 엔진 설정

@@ -6,6 +6,7 @@ from database import SessionLocal, DBCompany, DBTrade, DBNews, DBAgent, DBDiscus
 import uvicorn
 from datetime import datetime, timedelta
 from typing import List, Optional
+import os
 
 # 유저님의 핵심 엔진 및 멘토 임포트
 from core.team_market_engine import MarketEngine

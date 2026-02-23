@@ -4,6 +4,7 @@ import time
 import plotly.graph_objects as go
 from database import SessionLocal, DBTrade, DBCompany, DBAgent, DBNews
 from sqlalchemy import desc
+import os
 
 # --------------------------------------------------------------------------
 # 1. 페이지 설정

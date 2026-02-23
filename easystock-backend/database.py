@@ -8,6 +8,8 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, JSON
 from sqlalchemy.orm import declarative_base, sessionmaker
 
+DB_PATH = "/home/site/wwwroot/stock_game.db" if os.getenv("WEBSITE_HOSTNAME") else "stock_game.db"
+
 load_dotenv()
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
 
@@ -92,11 +94,9 @@ class DBDiscussion(Base):
 
 # 뉴스 & 랭킹 & 자산 관리용 (aiosqlite)
 
-DB_NAME = "stock_game.db"
-
 async def get_db_connection():
     """FastAPI 라우터에서 쓸 DB 연결 생성기"""
-    conn = await aiosqlite.connect(DB_NAME, timeout=30.0)
+    conn = await aiosqlite.connect(DB_PATH, timeout=30.0)
     conn.row_factory = aiosqlite.Row
     return conn
 
@@ -114,7 +114,7 @@ async def init_db():
         print(f"❌ [팀원 시스템] 테이블 생성 실패: {e}")
 
     # --- 2) 사용자(내) DB 초기화 (aiosqlite 방식) ---
-    async with aiosqlite.connect(DB_NAME, timeout=30.0) as db:
+    async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
         await db.execute("PRAGMA journal_mode=WAL;") 
         
         # 1. users 테이블

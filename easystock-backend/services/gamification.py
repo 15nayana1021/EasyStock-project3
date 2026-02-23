@@ -1,10 +1,11 @@
 from datetime import datetime
 import aiosqlite
 import os
+from database import DB_PATH
 
 # 경로 설정
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_PATH = os.path.join(BASE_DIR, "stock_game.db")
+DB_PATH = os.path.join(BASE_DIR, "DB_PATH")
 
 # 레벨업 경험치 테이블
 LEVEL_TABLE = {

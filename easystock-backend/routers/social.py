@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from database import get_db_connection
+import os
 
 # 진짜 레벨업 조건표(정답지)를 가져옵니다.
 try:

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Header
 import aiosqlite
 from database import get_db_connection
+import os
 
 router = APIRouter(prefix="/api/user", tags=["User"])
 

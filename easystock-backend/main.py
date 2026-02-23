@@ -11,6 +11,8 @@ from urllib.parse import unquote
 from collections import defaultdict
 from sqlalchemy import or_
 from core.mentor_brain import chat_with_mentor
+import os
+from database import DB_PATH
 
 # 엔진과 모델 임포트
 
@@ -76,7 +78,7 @@ async def simulate_market_background():
     print("🚀 [시스템] 유저 주문 모니터링 시작 (기존 엔진 로직 제거됨)")
     
     # 1. DB 연결 (유지)
-    db = await aiosqlite.connect("stock_game.db", timeout=30.0)
+    db = await aiosqlite.connect("DB_PATH", timeout=30.0)
     await db.execute("PRAGMA journal_mode=WAL;") 
     db.row_factory = aiosqlite.Row
 
@@ -160,7 +162,8 @@ origins = [
 # 2. 미들웨어를 설정합니다.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000",
+    "https://witty-bush-04d128e00.1.azurestaticapps.net"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -231,7 +234,7 @@ async def login_user(request: LoginRequest):
     닉네임을 받아서, 처음 온 유저면 가입시키고 100만원을 줍니다.
     이미 있는 유저면 그냥 로그인 성공 처리합니다.
     """
-    async with aiosqlite.connect("stock_game.db") as db:
+    async with aiosqlite.connect("DB_PATH") as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -278,7 +281,7 @@ async def get_my_portfolio(user_id: str = "1"):
     """
     닉네임(user_id)을 받아서 자산 정보를 조회합니다.
     """
-    async with aiosqlite.connect("stock_game.db") as db:
+    async with aiosqlite.connect("DB_PATH") as db:
         db.row_factory = aiosqlite.Row
         
         # 1. 먼저 '닉네임(username)'으로 유저를 찾습니다!
@@ -391,7 +394,7 @@ async def get_stock_orderbook(ticker: str):
 async def get_stock_news(ticker: str):
     decoded_ticker = unquote(ticker)
     
-    async with aiosqlite.connect("stock_game.db") as db:
+    async with aiosqlite.connect("DB_PATH") as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute("""
             SELECT id, ticker, title, source, created_at as time, category, content, summary 
@@ -440,7 +443,7 @@ def get_hot_ranking():
     return response_data
 @app.get("/api/news")
 async def get_all_news():
-    async with aiosqlite.connect("stock_game.db") as db:
+    async with aiosqlite.connect("DB_PATH") as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute("""
             SELECT id, ticker, title, source, created_at as time 
@@ -454,13 +457,13 @@ async def get_all_news():
 # 시장(Market) 상세화면용: 특정 종목 뉴스만 가져옴
 @app.get("/api/stocks/{ticker}/news")
 async def get_stock_news(ticker: str):
-    async with aiosqlite.connect("stock_game.db") as db:
+    async with aiosqlite.connect("DB_PATH") as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute("""
             SELECT id, ticker, title, source, created_at as time 
             FROM news 
             WHERE ticker = ? 
-            ORDER BY id DESC 
+            ORDER BY id DESC
             LIMIT 20
         """, (ticker,))
         rows = await cursor.fetchall()

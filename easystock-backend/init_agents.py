@@ -3,6 +3,7 @@ import uuid
 from sqlalchemy.orm import Session
 from database import SessionLocal, DBAgent, init_db
 from models.domain_models import AgentState
+import os
 
 def create_agents():
     db: Session = SessionLocal()
