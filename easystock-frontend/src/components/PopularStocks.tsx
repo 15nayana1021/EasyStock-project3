@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { TrendingUp, ChevronRight, ChevronUp } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { BASE_URL } from "../services/api";
 
 // API 주소 (사용자 로직 유지)
-const API_BASE_URL = "http://localhost:8000";
-
+const API_BASE_URL = BASE_URL;
 interface HotStock {
   rank: number;
   name: string;
