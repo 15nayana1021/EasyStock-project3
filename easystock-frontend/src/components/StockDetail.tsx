@@ -55,6 +55,8 @@ interface StockDetailProps {
   virtualDate: string;
   cash?: number;
   portfolio?: any[];
+  externalTab?: string;
+  onTabChange?: (tab: string) => void;
 }
 
 const StockDetail: React.FC<StockDetailProps> = ({
@@ -68,8 +70,12 @@ const StockDetail: React.FC<StockDetailProps> = ({
   activeNews,
   cash = 0,
   portfolio = [],
+  externalTab,
+  onTabChange,
 }) => {
-  const [activeTab, setActiveTab] = useState("차트");
+  const [localActiveTab, setLocalActiveTab] = useState("차트");
+  const activeTab = externalTab || localActiveTab;
+  const setActiveTab = onTabChange || setLocalActiveTab;
   const [communityPosts, setCommunityPosts] = useState<any[]>([]);
   const [communityInput, setCommunityInput] = useState("");
   const [mentorAdvice, setMentorAdvice] = useState<any | null>(null);
@@ -222,8 +228,39 @@ const StockDetail: React.FC<StockDetailProps> = ({
           ticker,
           periodMap[chartPeriod] || "1d",
         );
-        // ... 중략 ...
 
+        if (chartData && chartData.length > 0) {
+          const mapped: OHLCData[] = chartData.map((d: any) => ({
+            open: d.open || d.price || 0,
+            high: d.high || d.price || 0,
+            low: d.low || d.price || 0,
+            close: d.close || d.price || 0,
+            dateLabel: d.time ? d.time.slice(11, 16) : "00:00",
+          }));
+          setCandleData(mapped);
+        } else {
+          const fallbackData: OHLCData[] = [];
+          let tempPrice = currentPriceRaw * 0.95;
+          const now = new Date();
+
+          for (let i = 20; i >= 0; i--) {
+            const open = tempPrice;
+            const close =
+              i === 0
+                ? currentPriceRaw
+                : open + (Math.random() - 0.45) * (currentPriceRaw * 0.02);
+            const high =
+              Math.max(open, close) + Math.random() * (currentPriceRaw * 0.01);
+            const low =
+              Math.min(open, close) - Math.random() * (currentPriceRaw * 0.01);
+
+            const timeStr =
+              new Date(now.getTime() - i * 60 * 60 * 1000).getHours() + "시";
+            fallbackData.push({ open, high, low, close, dateLabel: timeStr });
+            tempPrice = close;
+          }
+          setCandleData(fallbackData);
+        }
         const orderBook = await fetchOrderBook(ticker);
         if (orderBook) {
           setCurrentPrice(orderBook.current_price);
@@ -286,17 +323,34 @@ const StockDetail: React.FC<StockDetailProps> = ({
     const userId = localStorage.getItem("stocky_user_id") || "1";
     if (tradeTab === "pending" && isTradeModalOpen) {
       fetchMyOrders(userId).then((orders) => {
+        const tickerToName: Record<string, string> = {
+          SS011: "삼송전자",
+          JW004: "재웅시스템",
+          AT010: "에이펙스테크",
+          MH012: "마이크로하드",
+          SH001: "소현컴퍼니",
+          ND008: "넥스트데이터",
+          JH005: "진호랩",
+          SE002: "상은테크놀로지",
+          IA009: "인사이트애널리틱스",
+          YJ003: "예진캐피탈",
+          SW006: "선우솔루션",
+          QD007: "퀀텀디지털",
+        };
+
         setPendingOrders(
           orders
             .filter((o: any) => o.status === "PENDING")
             .map((o: any) => {
               const isBuy =
                 String(o.side || o.order_type).toUpperCase() === "BUY";
+              const rawName = o.company_name || o.ticker || o.name || "";
+              const displayName = tickerToName[rawName] || rawName;
 
               return {
                 id: o.id,
                 type: isBuy ? "buy" : "sell",
-                name: o.company_name || o.name,
+                name: displayName,
                 qty: o.quantity || o.qty,
                 price: o.price,
               };
@@ -378,6 +432,7 @@ const StockDetail: React.FC<StockDetailProps> = ({
         : [currentPriceRaw];
     const rawMin = Math.min(...prices);
     const rawMax = Math.max(...prices);
+
     const minVal =
       rawMin === Infinity || isNaN(rawMin)
         ? currentPriceRaw * 0.95
@@ -388,38 +443,81 @@ const StockDetail: React.FC<StockDetailProps> = ({
         : rawMax * 1.05;
     const range = Math.max(maxVal - minVal, 1);
 
-    const containerHeight = 250;
-    const padding = { top: 20, bottom: 30, left: 0, right: 50 };
+    const containerHeight = 260;
+    const padding = { top: 20, bottom: 35, left: 0, right: 50 };
     const chartHeight = containerHeight - padding.bottom - padding.top;
-    const calculatedWidth = Math.max(window.innerWidth, candleData.length * 12);
+
+    const candleWidth = 12;
+    const minChartWidth = window.innerWidth;
+    const calculatedWidth = Math.max(
+      minChartWidth,
+      candleData.length * candleWidth,
+    );
     const chartWidth = calculatedWidth - padding.right;
 
-    const getY = (price: number) =>
-      containerHeight -
-      padding.bottom -
-      ((price - minVal) / range) * chartHeight;
+    const getY = (price: number) => {
+      return (
+        containerHeight -
+        padding.bottom -
+        ((price - minVal) / range) * chartHeight
+      );
+    };
+
+    const handleMouseMove = (
+      e: React.MouseEvent<SVGSVGElement> | React.TouchEvent<SVGSVGElement>,
+    ) => {
+      const svg = e.currentTarget;
+      const rect = svg.getBoundingClientRect();
+
+      const clientX =
+        "touches" in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
+      const x = clientX - rect.left;
+
+      if (x > chartWidth) {
+        setHoverData(null);
+        return;
+      }
+
+      const index = Math.floor((x / chartWidth) * candleData.length);
+
+      if (index >= 0 && index < candleData.length) {
+        const d = candleData[index];
+        const diff = d.close - d.open;
+        const diffPercent = (diff / d.open) * 100;
+        const candleCenter =
+          index * (chartWidth / candleData.length) +
+          chartWidth / candleData.length / 2;
+
+        setHoverData({
+          price: d.close,
+          change: diff,
+          changePercent: diffPercent,
+          y: getY(d.close),
+          x: candleCenter,
+          date: d.dateLabel,
+        });
+      }
+    };
 
     return (
-      <div className="bg-white rounded-[2rem] pt-6 pb-4 shadow-sm border border-gray-100 shrink-0 flex flex-col relative overflow-hidden mb-2 h-[260px]">
-        {isLoadingChart && (
-          <div className="absolute inset-0 z-30 bg-white/60 flex items-center justify-center">
-            <span className="text-sm font-bold text-[#004FFE]">
-              데이터 불러오는 중...
-            </span>
-          </div>
-        )}
+      <div className="bg-white rounded-[2rem] pt-6 pb-4 shadow-sm border border-gray-100 shrink-0 flex flex-col relative overflow-hidden mb-2 min-h-[250px]">
+        {/* Y축 가격 라벨 */}
         <div
           className="absolute right-0 flex flex-col text-[10px] font-bold text-gray-400 pointer-events-none text-right pr-3 z-20"
           style={{
-            top: "20px",
+            top: "30px",
             height: "180px",
             justifyContent: "space-between",
           }}
         >
           <span>{Math.round(maxVal).toLocaleString()}</span>
+          <span>{Math.round(minVal + range * 0.75).toLocaleString()}</span>
           <span>{Math.round(minVal + range * 0.5).toLocaleString()}</span>
+          <span>{Math.round(minVal + range * 0.25).toLocaleString()}</span>
           <span>{Math.round(minVal).toLocaleString()}</span>
         </div>
+
+        {/* 차트 스크롤 영역 */}
         <div
           className="flex-1 overflow-x-auto hide-scrollbar relative w-full"
           ref={scrollContainerRef}
@@ -427,26 +525,74 @@ const StockDetail: React.FC<StockDetailProps> = ({
           <svg
             width={calculatedWidth}
             height={containerHeight}
-            className="overflow-visible"
+            className="overflow-visible touch-pan-x"
+            onMouseMove={handleMouseMove}
+            onTouchMove={handleMouseMove}
+            onMouseLeave={() => setHoverData(null)}
+            onTouchEnd={() => setHoverData(null)}
+            style={{ cursor: "crosshair" }}
           >
+            {/* 가로 점선 (그리드) */}
+            {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => {
+              const y = containerHeight - padding.bottom - ratio * chartHeight;
+              return (
+                <line
+                  key={i}
+                  x1={0}
+                  y1={y}
+                  x2={calculatedWidth}
+                  y2={y}
+                  stroke="#f3f4f6"
+                  strokeWidth="1"
+                />
+              );
+            })}
+
+            {/* X축 시간 라벨 */}
+            {candleData.map((d, i) => {
+              if (i % 5 !== 0) return null;
+              const x =
+                i * (chartWidth / candleData.length) +
+                chartWidth / candleData.length / 2;
+              return (
+                <text
+                  key={i}
+                  x={x}
+                  y={containerHeight - 15}
+                  textAnchor="middle"
+                  fill="#9CA3AF"
+                  fontSize="10"
+                  fontWeight="bold"
+                >
+                  {d.dateLabel}
+                </text>
+              );
+            })}
+
+            {/* 캔들스틱 (봉 차트) 그리기 */}
             {candleData.map((d, i) => {
               const isUp = d.close >= d.open;
               const color = isUp ? "#E53935" : "#1E88E5";
               const barW = chartWidth / candleData.length;
+              const wickX = i * barW + barW / 2;
               const bodyX = i * barW + 2;
               const bodyWidth = Math.max(barW - 4, 2);
+
               const yOpen = getY(d.open);
               const yClose = getY(d.close);
+
               return (
                 <g key={i}>
+                  {/* 꼬리 */}
                   <line
-                    x1={bodyX + bodyWidth / 2}
+                    x1={wickX}
                     y1={getY(d.high)}
-                    x2={bodyX + bodyWidth / 2}
+                    x2={wickX}
                     y2={getY(d.low)}
                     stroke={color}
                     strokeWidth="1"
                   />
+                  {/* 몸통 */}
                   <rect
                     x={bodyX}
                     y={Math.min(yOpen, yClose)}
@@ -458,8 +604,86 @@ const StockDetail: React.FC<StockDetailProps> = ({
                 </g>
               );
             })}
+
+            {/* 누르거나 마우스 올렸을 때 나타나는 십자선 & 가격표 */}
+            {hoverData && (
+              <g>
+                {/* 십자선 */}
+                <line
+                  x1={hoverData.x}
+                  y1={padding.top}
+                  x2={hoverData.x}
+                  y2={containerHeight - padding.bottom}
+                  stroke="#004FFE"
+                  strokeWidth="1"
+                  strokeDasharray="4 4"
+                  opacity="0.8"
+                />
+                <line
+                  x1={0}
+                  y1={hoverData.y}
+                  x2={calculatedWidth}
+                  y2={hoverData.y}
+                  stroke="#004FFE"
+                  strokeWidth="1"
+                  strokeDasharray="4 4"
+                  opacity="0.8"
+                />
+
+                {/* 가격 뱃지 */}
+                <g
+                  transform={`translate(${hoverData.x + 10}, ${hoverData.y - 12})`}
+                >
+                  <rect
+                    x="0"
+                    y="0"
+                    width="60"
+                    height="24"
+                    rx="4"
+                    fill="#004FFE"
+                    filter="drop-shadow(0px 2px 4px rgba(0,0,0,0.1))"
+                  />
+                  <text
+                    x="30"
+                    y="16"
+                    textAnchor="middle"
+                    fontSize="10"
+                    fontWeight="bold"
+                    fill="white"
+                  >
+                    {Math.round(hoverData.price).toLocaleString()}
+                  </text>
+                </g>
+
+                {/* 시간 뱃지 */}
+                <g
+                  transform={`translate(${hoverData.x}, ${containerHeight - padding.bottom + 5})`}
+                >
+                  <rect
+                    x="-20"
+                    y="0"
+                    width="40"
+                    height="18"
+                    rx="4"
+                    fill="#374151"
+                  />
+                  <text
+                    x="0"
+                    y="13"
+                    textAnchor="middle"
+                    fontSize="10"
+                    fontWeight="bold"
+                    fill="white"
+                  >
+                    {hoverData.date}
+                  </text>
+                </g>
+              </g>
+            )}
           </svg>
         </div>
+
+        {/* 하단 기간 선택 버튼 */}
         <div className="px-6 pb-2 flex items-end justify-between mt-2">
           <div className="flex bg-gray-100 p-1 rounded-xl space-x-1">
             {["1일", "1주", "1달", "1년"].map((period) => (
@@ -671,7 +895,10 @@ const StockDetail: React.FC<StockDetailProps> = ({
   return (
     <div className="flex flex-col h-full bg-[#F5F8FC] relative overflow-hidden">
       {/* 1. 메인 헤더 */}
-      <div className="px-5 pt-6 pb-2 flex items-center justify-between shrink-0 bg-white">
+      <div
+        id="stock-detail-info"
+        className="px-5 pt-6 pb-2 flex items-center justify-between shrink-0 bg-white"
+      >
         <button
           onClick={onBack}
           className="p-2 -ml-2 text-gray-600 hover:bg-gray-50 rounded-full transition-colors"
@@ -697,19 +924,16 @@ const StockDetail: React.FC<StockDetailProps> = ({
       {/* 2. 주가 표시 */}
       <div className="bg-white flex flex-col px-6">
         <div className="text-center py-6">
-          {/* 가장 큰 글씨 실시간 가격 적용 */}
           <h1 className="text-4xl font-black text-[#1A334E] mb-1">
             {currentPrice.toLocaleString()}원
           </h1>
-
-          {/* 0.00%에 머물러있던 등락률도 실시간으로 적용 */}
           <div
             className={`text-sm font-black flex items-center justify-center ${isCurrentlyUp ? "text-[#E53935]" : "text-[#1E88E5]"}`}
           >
             {currentDisplayChange}
           </div>
         </div>
-        <div className="flex border-b border-gray-100">
+        <div id="stock-detail-tabs" className="flex border-b border-gray-100">
           {["차트", "호가", "뉴스", "조언", "토론"].map((tab) => (
             <button
               key={tab}
@@ -730,7 +954,7 @@ const StockDetail: React.FC<StockDetailProps> = ({
       <div className="flex-1 overflow-y-auto hide-scrollbar bg-[#F5F8FC] p-5">
         {/* === 차트 탭 === */}
         {activeTab === "차트" && (
-          <>
+          <div id="stock-detail-chart" className="flex flex-col">
             {renderChart()}
             <div className="mt-4 flex items-center space-x-4 shrink-0">
               <button
@@ -752,12 +976,15 @@ const StockDetail: React.FC<StockDetailProps> = ({
                 살게요
               </button>
             </div>
-          </>
+          </div>
         )}
 
         {/* === 호가 탭 === */}
         {activeTab === "호가" && (
-          <div className="bg-white rounded-[1.5rem] p-3 shadow-sm border border-gray-100 flex flex-col animate-in fade-in">
+          <div
+            id="stock-detail-orderbook"
+            className="bg-white rounded-[1.5rem] p-3 shadow-sm border border-gray-100 flex flex-col animate-in fade-in"
+          >
             {/* 호가 테이블 헤더 */}
             <div className="flex justify-between text-[11px] font-bold text-gray-400 mb-3 px-2 pt-2 border-b border-gray-50 pb-2">
               <span className="flex-1 text-left">매도잔량</span>
@@ -771,7 +998,6 @@ const StockDetail: React.FC<StockDetailProps> = ({
                 orderBookData.map((item, idx) => (
                   <div
                     key={idx}
-                    // 항목별 배경색을 사진처럼 연한 파랑/빨강으로 적용하고 여백을 조정했습니다.
                     className={`flex justify-between items-center py-3 px-2 mb-1 rounded-lg ${
                       item.type === "ask" ? "bg-blue-50/40" : "bg-red-50/40"
                     }`}
@@ -819,7 +1045,11 @@ const StockDetail: React.FC<StockDetailProps> = ({
 
         {/* 뉴스 탭 */}
         {activeTab === "뉴스" && (
-          <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 pb-10">
+          <div
+            id="stock-detail-news"
+            className="space-y-3 animate-in fade-in slide-in-from-bottom-2 pb-10"
+          >
+            {/* ... 내용 유지 ... */}
             {relatedNews.length > 0 ? (
               <>
                 {relatedNews
@@ -919,7 +1149,10 @@ const StockDetail: React.FC<StockDetailProps> = ({
 
         {/* 4. 조언 탭 */}
         {activeTab === "조언" && (
-          <div className="flex-1 flex flex-col bg-[#CFE3FA] relative -mx-5 -mb-5 h-[calc(100%+1.25rem)] overflow-hidden">
+          <div
+            id="stock-detail-advice"
+            className="flex-1 flex flex-col bg-[#CFE3FA] relative -mx-5 -mb-5 h-[calc(100%+1.25rem)] overflow-hidden"
+          >
             <div className="flex-1 overflow-y-auto pl-5 pr-4 pt-8 space-y-6 pb-32 hide-scrollbar flex flex-col">
               {isLoadingAdvice ? (
                 <div className="flex flex-col items-center justify-center h-full opacity-60 animate-pulse">
@@ -1061,8 +1294,6 @@ const StockDetail: React.FC<StockDetailProps> = ({
                   : null;
 
                 return (
-                  // 내 글은 오른쪽, 남의 글은 왼쪽 정렬
-
                   <div
                     key={post.id}
                     className={`flex flex-col animate-in fade-in ${isMe ? "items-end" : "items-start"}`}

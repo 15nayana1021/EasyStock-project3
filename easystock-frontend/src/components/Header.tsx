@@ -1,10 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import { CalendarDays, Bell, X } from "lucide-react";
 import { NotificationItem } from "../types";
-// 팀원분이 적용한 다람쥐 프로필 이미지! (assets 폴더에 있어야 합니다)
 import profileSquirrel from "../assets/profile_squirrel.png";
 
-// 🟢 1번 파일(사용자님)의 Props 유지: App.tsx가 넘겨주는 진짜 데이터들
 interface HeaderProps {
   showProfile: boolean;
   notifications: NotificationItem[];
@@ -49,22 +47,19 @@ const Header: React.FC<HeaderProps> = ({
     };
   }, []);
 
-  // 🔵 2번 파일(팀원)의 깔끔한 블루 테마 디자인 적용
   return (
     <div className="p-5 flex justify-between items-center bg-transparent min-h-[80px] relative z-50">
       {showProfile ? (
         <div className="flex items-center space-x-2 animate-in fade-in duration-300">
           <div className="w-10 h-10 rounded-full border-2 border-white shadow-sm overflow-hidden bg-white flex items-center justify-center">
-            {/* 귀여운 다람쥐 프로필 이미지 */}
             <img
-              src={profileSquirrel}
+              src={level && level >= 5 ? "/lv5.png" : profileSquirrel}
               alt="Avatar"
               className="w-9 h-9 object-contain"
             />
           </div>
           <div className="flex flex-col">
             <div className="flex items-center space-x-2">
-              {/* 🟢 가짜 데이터 대신 사용자님의 진짜 닉네임과 레벨 적용 */}
               <span className="text-[20px] font-black text-[#1A334E] tracking-tight">
                 {nickname || "투자자"}
               </span>
@@ -138,7 +133,6 @@ const Header: React.FC<HeaderProps> = ({
         {/* 달력 (가상 시간) */}
         <div className="bg-white/80 backdrop-blur-sm border border-[#CFE3FA] px-3 py-1.5 rounded-full flex items-center space-x-2 shadow-sm h-[32px]">
           <CalendarDays size={16} className="text-[#004FFE]" />
-          {/* 🟢 하드코딩된 날짜 제거, 백엔드 연동 날짜(virtualDate) 부활 */}
           <span className="text-xs font-semibold text-gray-700">
             {virtualDate || "02.26 (목)"}
           </span>

@@ -10,6 +10,7 @@ interface RankedStock extends StockData {
   changeText: string;
   isUp: boolean;
   category: string;
+  volume: number;
 }
 
 interface MarketContentProps {
@@ -54,15 +55,33 @@ const MarketContent: React.FC<MarketContentProps> = ({
       try {
         const data = await fetchCompanies();
 
+        const categoryMap: Record<string, string> = {
+          삼송전자: "전자",
+          에이펙스테크: "전자",
+          상은테크놀로지: "바이오",
+          재웅시스템: "전자",
+          마이크로하드: "IT",
+          넥스트데이터: "IT",
+          선우솔루션: "금융",
+          퀀텀디지털: "금융",
+          진호랩: "바이오",
+          소현컴퍼니: "IT",
+          인사이트애널리틱스: "바이오",
+          예진캐피탈: "금융",
+        };
+
         const mappedData: RankedStock[] = data.map((stock: any) => {
-          const rate = stock.change_rate || 0;
+          const rateString = (stock.change || "0").replace(/[^0-9.-]/g, "");
+          const rate = parseFloat(rateString) || 0;
+
           return {
             ...stock,
             id: stock.id || Math.random(),
             change_rate: rate,
             changeText: `${Math.abs(rate).toFixed(2)}%`,
-            isUp: rate >= 0,
-            category: stock.badge || "기타",
+            isUp: stock.isUp !== undefined ? stock.isUp : rate >= 0,
+            category: categoryMap[stock.name] || "IT",
+            volume: stock.volume || 0,
           };
         });
 
@@ -80,6 +99,9 @@ const MarketContent: React.FC<MarketContentProps> = ({
       }
     };
     loadCompanies();
+
+    const interval = setInterval(loadCompanies, 3000);
+    return () => clearInterval(interval);
   }, []);
 
   // 실시간 랭킹 정렬 로직
@@ -88,8 +110,10 @@ const MarketContent: React.FC<MarketContentProps> = ({
     list.sort((a, b) => {
       if (rankFilter === "up") {
         return b.change_rate - a.change_rate;
-      } else {
+      } else if (rankFilter === "down") {
         return a.change_rate - b.change_rate;
+      } else {
+        return (b.volume || 0) - (a.volume || 0);
       }
     });
     return showAllRanking ? list : list.slice(0, 5);
@@ -305,14 +329,17 @@ const MarketContent: React.FC<MarketContentProps> = ({
                       </div>
                     </div>
                     <div className="text-right">
+                      {/* 현재 가격은 항상 보여줍니다. */}
                       <p className="text-sm font-black text-[#1A334E] tracking-tighter">
                         {stock.price}
                       </p>
-                      <p
-                        className={`text-[11px] font-black flex items-center justify-end ${stock.isUp ? "text-[#E53935]" : "text-[#1E88E5]"}`}
-                      >
-                        {stock.isUp ? "▲" : "▼"} {stock.changeText}
-                      </p>
+                      {rankFilter !== "volume" && (
+                        <p
+                          className={`text-[11px] font-black flex items-center justify-end mt-0.5 ${stock.isUp ? "text-[#E53935]" : "text-[#1E88E5]"}`}
+                        >
+                          {stock.isUp ? "▲" : "▼"} {stock.changeText}
+                        </p>
+                      )}
                     </div>
                   </div>
                 ))}

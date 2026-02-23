@@ -8,6 +8,7 @@ import {
   TransactionItem,
 } from "../types";
 import { fetchMyOrders, cancelOrder, fetchAllOrders } from "../services/api";
+import StatusTour from "./onboarding/StatusTour";
 
 interface SolutionItem {
   id: number;
@@ -28,6 +29,21 @@ interface StockStatusContentProps {
   onSell: (stock: StockData, price: number, qty: number) => void;
   virtualDate: string;
 }
+
+const tickerToName: Record<string, string> = {
+  SS011: "삼송전자",
+  JW004: "재웅시스템",
+  AT010: "에이펙스테크",
+  MH012: "마이크로하드",
+  SH001: "소현컴퍼니",
+  ND008: "넥스트데이터",
+  JH005: "진호랩",
+  SE002: "상은테크놀로지",
+  IA009: "인사이트애널리틱스",
+  YJ003: "예진캐피탈",
+  SW006: "선우솔루션",
+  QD007: "퀀텀디지털",
+};
 
 const solutionData: SolutionItem[] = [
   {
@@ -75,6 +91,31 @@ const StockStatusContent: React.FC<StockStatusContentProps> = ({
   const [pendingList, setPendingList] = useState<any[]>([]);
   const [filledList, setFilledList] = useState<any[]>([]);
   const userId = localStorage.getItem("stocky_user_id") || "1";
+  const [statusTourCompleted, setStatusTourCompleted] = useState(
+    () => localStorage.getItem("status-tour-done") === "true",
+  );
+  const [showStatusTour, setShowStatusTour] = useState(false);
+
+  useEffect(() => {
+    const checkTourStatus = () => {
+      const isStatusPending =
+        localStorage.getItem("status-highlight-pending") === "true";
+      if (!statusTourCompleted && isStatusPending) {
+        setShowStatusTour(true);
+      }
+    };
+    checkTourStatus();
+    window.addEventListener("check-status-highlight", checkTourStatus);
+    return () =>
+      window.removeEventListener("check-status-highlight", checkTourStatus);
+  }, [statusTourCompleted]);
+
+  const handleTourComplete = () => {
+    setStatusTourCompleted(true);
+    setShowStatusTour(false);
+    localStorage.removeItem("status-highlight-pending");
+    window.dispatchEvent(new Event("check-status-highlight"));
+  };
 
   const totalStockValue = portfolio.reduce((acc, item) => {
     const price =
@@ -125,7 +166,7 @@ const StockStatusContent: React.FC<StockStatusContentProps> = ({
   // 1. 주식현황 탭 (팀원 디자인 완벽 적용)
   const renderStatusView = () => (
     <div className="flex flex-col animate-in fade-in duration-300 pb-32">
-      <div className="relative mt-2 mb-8 px-5">
+      <div id="status-total-assets" className="relative mt-2 mb-8 px-5">
         <div className="bg-[#004FFE] rounded-[2.5rem] p-6 shadow-xl shadow-blue-900/20 relative overflow-hidden">
           <div className="absolute inset-0 opacity-10 pointer-events-none bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white via-transparent to-transparent"></div>
           <div className="flex flex-col space-y-1 relative z-10">
@@ -165,7 +206,7 @@ const StockStatusContent: React.FC<StockStatusContentProps> = ({
         </div>
       </div>
 
-      <div className="mb-8 px-5">
+      <div id="status-portfolio-list" className="mb-8 px-5">
         <div className="flex items-center space-x-1 mb-4 cursor-pointer group">
           <h2 className="text-lg font-black text-gray-800">
             보유자산 포트폴리오
@@ -179,6 +220,7 @@ const StockStatusContent: React.FC<StockStatusContentProps> = ({
           {portfolio.length > 0 ? (
             portfolio.map((item, index) => {
               const isUp = item.profit_rate >= 0;
+              const displayName = tickerToName[item.name] || item.name;
               return (
                 <div
                   key={index}
@@ -187,12 +229,12 @@ const StockStatusContent: React.FC<StockStatusContentProps> = ({
                 >
                   <div className="flex items-center space-x-4">
                     <div className="w-12 h-12 rounded-2xl bg-[#004FFE] flex items-center justify-center text-white font-black text-xl shadow-sm">
-                      {item.name.charAt(0)}
+                      {displayName.charAt(0)}
                     </div>
                     <div className="flex flex-col space-y-0.5">
                       <div className="flex items-center space-x-2">
                         <h3 className="font-bold text-gray-800 text-sm">
-                          {item.name}
+                          {displayName}
                         </h3>
                       </div>
                       <span className="text-xs font-bold text-gray-400">
@@ -226,7 +268,7 @@ const StockStatusContent: React.FC<StockStatusContentProps> = ({
         </div>
       </div>
 
-      <div className="mb-4 px-5">
+      <div id="status-watchlist" className="mb-4 px-5">
         <div className="flex items-center space-x-1 mb-4">
           <h2 className="text-lg font-black text-gray-800">관심 종목</h2>
           <span className="text-[#E53935]">❤️</span>
@@ -307,7 +349,7 @@ const StockStatusContent: React.FC<StockStatusContentProps> = ({
 
     return (
       <div className="flex flex-col bg-[#CFE3FA] animate-in fade-in duration-300 pb-32">
-        {/* 거래내역 헤더 디자인 (팀원 100% 동일) */}
+        {/* 거래내역 헤더 디자인 */}
         <div
           className="p-6 pb-8 relative overflow-hidden rounded-b-[2rem]"
           style={{
@@ -382,7 +424,11 @@ const StockStatusContent: React.FC<StockStatusContentProps> = ({
                     <div className="flex items-center justify-between">
                       <div className="flex flex-col">
                         <h3 className="text-lg font-black text-gray-800 leading-none mb-1">
-                          {item.company_name || item.ticker}
+                          {tickerToName[
+                            item.company_name || item.ticker || ""
+                          ] ||
+                            item.company_name ||
+                            item.ticker}
                         </h3>
                         <span className="text-[11px] font-bold text-gray-400">
                           {item.quantity}주 · {item.price.toLocaleString()}원
@@ -426,7 +472,11 @@ const StockStatusContent: React.FC<StockStatusContentProps> = ({
                     <div className="flex items-center justify-between">
                       <div className="flex flex-col">
                         <h3 className="text-lg font-black text-gray-800 leading-none mb-1">
-                          {item.company_name || item.ticker}
+                          {tickerToName[
+                            item.company_name || item.ticker || ""
+                          ] ||
+                            item.company_name ||
+                            item.ticker}
                         </h3>
                         <span className="text-[11px] font-bold text-gray-300">
                           {item.quantity}주 · {item.price.toLocaleString()}원
@@ -484,7 +534,7 @@ const StockStatusContent: React.FC<StockStatusContentProps> = ({
     );
   };
 
-  // 3. 솔루션 탭 (팀원 디자인 100% 동일)
+  // 3. 솔루션 탭
   const renderSolutionView = () => (
     <div className="flex flex-col bg-[#CFE3FA] animate-in fade-in duration-300 px-4 pt-4 pb-32">
       {solutionData.map((solution) => (
@@ -527,6 +577,14 @@ const StockStatusContent: React.FC<StockStatusContentProps> = ({
 
   return (
     <div className="flex flex-col h-full bg-[#CFE3FA] rounded-t-[2.5rem] border border-white/50 shadow-inner overflow-hidden">
+      {showStatusTour && (
+        <StatusTour
+          onComplete={handleTourComplete}
+          onSelectTab={setActiveTab}
+          onNavigateHome={() => navigate("/assets")}
+        />
+      )}
+
       <div className="p-5 pb-3 shrink-0">
         <div className="bg-gray-100/50 p-1 rounded-2xl flex items-center justify-between">
           <button
@@ -537,6 +595,7 @@ const StockStatusContent: React.FC<StockStatusContentProps> = ({
           </button>
           <div className="w-[1px] h-4 bg-gray-200 mx-1"></div>
           <button
+            id="status-tab-history"
             onClick={() => setActiveTab("history")}
             className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${activeTab === "history" ? "bg-[#004FFE] text-white shadow-sm" : "text-gray-400"}`}
           >
@@ -544,6 +603,7 @@ const StockStatusContent: React.FC<StockStatusContentProps> = ({
           </button>
           <div className="w-[1px] h-4 bg-gray-200 mx-1"></div>
           <button
+            id="status-tab-solution"
             onClick={() => setActiveTab("solution")}
             className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${activeTab === "solution" ? "bg-[#004FFE] text-white shadow-sm" : "text-gray-400"}`}
           >

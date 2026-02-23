@@ -205,6 +205,13 @@ const App: React.FC = () => {
 
       localStorage.setItem("stocky_user_id", realUserId.toString());
       localStorage.setItem("stocky_nickname", inputNickname);
+      localStorage.removeItem("app-tour-done");
+      localStorage.removeItem("market-tour-done");
+      localStorage.removeItem("chat-tour-done");
+      localStorage.removeItem("status-tour-done");
+      localStorage.removeItem("market-highlight-pending");
+      localStorage.removeItem("status-highlight-pending");
+      setShowTour(true);
 
       setUserId(realUserId.toString());
       setNickname(inputNickname);
@@ -398,8 +405,8 @@ const App: React.FC = () => {
           }
         }
 
-        const { fetchNewsList } = await import("./services/api");
-        const allNews = await fetchNewsList();
+        const { fetchNews } = await import("./services/api");
+        const allNews = await fetchNews();
         const newsByCompany: { [key: string]: any[] } = {};
 
         allNews.forEach((news: any) => {
@@ -631,6 +638,7 @@ const App: React.FC = () => {
                   activeNews={activeNews}
                   cash={cash}
                   portfolio={livePortfolio}
+                  homeTourCompleted={!showTour}
                 />
               }
             />
@@ -670,23 +678,17 @@ const App: React.FC = () => {
             }
           />
         </Routes>
+        {userId && showTour && (
+          <AppTour
+            userName={nickname}
+            onComplete={() => {
+              setShowTour(false);
+              localStorage.setItem("app-tour-done", "true");
+              setLevel(2);
+            }}
+          />
+        )}
       </Router>
-
-      {/* 튜토리얼 (온보딩 완료 후 띄우기) */}
-      {userId && showTour && (
-        <AppTour
-          onComplete={() => {
-            // 1. 튜토리얼 창 닫기
-            setShowTour(false);
-
-            // 2. 튜토리얼 완료했다고 내 컴퓨터(로컬스토리지)에 저장하기
-            localStorage.setItem("app-tour-done", "true");
-
-            // 3. 레벨을 즉시 2로 올리기! (새로고침 없이 짠! 바뀝니다)
-            setLevel(2);
-          }}
-        />
-      )}
     </>
   );
 };

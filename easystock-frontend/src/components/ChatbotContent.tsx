@@ -3,6 +3,7 @@ import { ChevronLeft, Plus, Send, List, Check } from "lucide-react";
 
 // 🔥 [추가] api.ts에서 챗봇 API 불러오기 (경로에 맞게 수정해주세요)
 import { fetchAgentChat } from "../services/api";
+import ChatTour from "./onboarding/ChatTour";
 
 interface Message {
   id: number;
@@ -75,6 +76,9 @@ const ChatbotContent: React.FC<ChatbotContentProps> = ({ onBack }) => {
   const [selectedAgentIds, setSelectedAgentIds] = useState<number[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
+  const [chatTourCompleted, setChatTourCompleted] = useState(
+    () => localStorage.getItem("chat-tour-done") === "true",
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -198,6 +202,7 @@ const ChatbotContent: React.FC<ChatbotContentProps> = ({ onBack }) => {
       <div className="flex flex-col h-full bg-[#e1eaf5] relative animate-in fade-in duration-300">
         <div className="px-5 pt-8 pb-4 flex items-center justify-end shrink-0">
           <button
+            id="chat-tour-select"
             onClick={handleStartChat}
             disabled={selectedAgentIds.length === 0}
             className={`px-5 py-2.5 rounded-2xl font-black text-[13px] tracking-tight transition-all ${
@@ -210,7 +215,7 @@ const ChatbotContent: React.FC<ChatbotContentProps> = ({ onBack }) => {
           </button>
         </div>
 
-        <div className="px-6 pb-6 shrink-0">
+        <div id="chat-tour-intro" className="px-6 pb-6 shrink-0">
           <h1 className="text-[26px] font-black text-[#1A334E] leading-tight tracking-tight">
             함께할 AI 파트너를
             <br />
@@ -352,7 +357,10 @@ const ChatbotContent: React.FC<ChatbotContentProps> = ({ onBack }) => {
         })}
       </div>
 
-      <div className="px-4 pt-2 pb-28 bg-gradient-to-t from-[#e1eaf5] via-[#e1eaf5] to-transparent shrink-0">
+      <div
+        id="chat-tour-input"
+        className="px-4 pt-2 pb-28 bg-gradient-to-t from-[#e1eaf5] via-[#e1eaf5] to-transparent shrink-0"
+      >
         <div className="bg-white rounded-full p-2 flex items-center shadow-lg border border-white">
           <input
             type="file"
@@ -393,6 +401,13 @@ const ChatbotContent: React.FC<ChatbotContentProps> = ({ onBack }) => {
           </button>
         </div>
       </div>
+      {!chatTourCompleted && (
+        <ChatTour
+          onComplete={() => setChatTourCompleted(true)}
+          isChatStep={step === "chat"}
+          onForceChatView={() => {}}
+        />
+      )}
     </div>
   );
 };

@@ -75,6 +75,7 @@ const CommunityContent: React.FC<{ userName: string }> = ({ userName }) => {
               hasLiked: existingPost ? existingPost.hasLiked : false,
               replyList: existingPost ? existingPost.replyList : [],
               isLocalOnly: false,
+              sentiment: serverPost.sentiment,
             };
           });
 
@@ -206,11 +207,22 @@ const CommunityContent: React.FC<{ userName: string }> = ({ userName }) => {
             >
               <div className="flex flex-col space-y-2">
                 <div className="flex justify-between items-center">
-                  <h3
-                    className={`text-sm font-bold ${post.isMe ? "text-[#1E88E5]" : "text-gray-800"}`}
-                  >
-                    {post.isMe ? `${post.user} • 나` : post.user}
-                  </h3>
+                  <div className="flex items-center space-x-2">
+                    <h3
+                      className={`text-sm font-bold ${post.isMe ? "text-[#1E88E5]" : "text-gray-800"}`}
+                    >
+                      {post.isMe ? `${post.user} • 나` : post.user}
+                    </h3>
+
+                    {post.sentiment && (
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded ${post.sentiment === "BULL" ? "bg-red-50 text-[#E53935]" : "bg-blue-50 text-[#1E88E5]"}`}
+                      >
+                        {post.sentiment === "BULL" ? "📈" : "📉"}
+                      </span>
+                    )}
+                  </div>
+
                   <span className="text-[10px] text-gray-400 font-medium">
                     {post.time}
                   </span>

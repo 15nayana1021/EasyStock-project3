@@ -322,23 +322,47 @@ async def place_order(req: OrderRequest):
             # 2. 현재가 조회
             current_market_price = None
             try:
+                # 1차 시도: 원래 있던 stocks 테이블에서 기호(symbol)로 찾기
                 cursor = await db.execute("SELECT current_price FROM stocks WHERE symbol = ?", (target_ticker,))
                 row = await cursor.fetchone()
-                if row: current_market_price = row['current_price']
-                else:
-                    cursor = await db.execute("SELECT price FROM stocks WHERE symbol = ?", (target_ticker,))
-                    row = await cursor.fetchone()
-                    current_market_price = row['price'] if row else None
-            except: pass
+                if row: current_market_price = row[0]
+            except Exception:
+                pass
 
-            # 3. 체결 조건 계산 (시장가 vs 지정가)
+            # 2차 시도: stocks에 없다면 혹시 companies 테이블에 있을까?
+            if current_market_price is None:
+                try:
+                    cursor = await db.execute("SELECT current_price FROM companies WHERE ticker = ? OR symbol = ?", (target_ticker, target_ticker))
+                    row = await cursor.fetchone()
+                    if row: current_market_price = row[0]
+                except Exception:
+                    pass
+
+            if current_market_price is None:
+                print(f"⚠️ [경고] DB에서 {target_ticker}의 가격을 못 찾았습니다. 유저 입력가({req.price}원)로 즉시 체결시킵니다.")
+                current_market_price = req.price
+
+            print(f"▶️ [주문 점검 완료] 대상: {target_ticker}, 현재가: {current_market_price}, 입력가: {req.price}")
+
+
+            # 3. 체결 조건 계산 (진짜 주식시장 로직 반영)
             is_immediate_fill = False
-            if req.order_type == "MARKET":
-                is_immediate_fill = True
-                if current_market_price: req.price = current_market_price 
-            elif current_market_price:
-                if side == "BUY" and req.price >= current_market_price: is_immediate_fill = True
-                elif side == "SELL" and req.price <= current_market_price: is_immediate_fill = True
+            
+            if current_market_price:
+                if req.order_type == "MARKET":
+                    is_immediate_fill = True
+                    req.price = current_market_price
+                else: # 지정가(LIMIT)일 경우
+                    if side == "BUY":
+                        # 내가 사려는 가격이 현재가보다 같거나 더 비싸면 -> 싼 현재가로 즉시 득템!
+                        if req.price >= current_market_price:
+                            is_immediate_fill = True
+                            req.price = current_market_price 
+                    elif side == "SELL":
+                        # 내가 팔려는 가격이 현재가보다 같거나 더 싸면 -> 비싼 현재가로 즉시 처분!
+                        if req.price <= current_market_price:
+                            is_immediate_fill = True
+                            req.price = current_market_price
 
             # 자산 선 차감 로직 (미체결이어도 돈/주식 먼저 뺌)
             total_amount = req.price * req.quantity
@@ -590,21 +614,3 @@ async def get_all_orders_all(user_id: int, db: aiosqlite.Connection = Depends(ge
     """, (user_id,))
     rows = await cursor.fetchall()
     return [dict(row) for row in rows]
-
-@router.get("/companies")
-def get_companies():
-    result = []
-    for ticker, info in engine.companies.items():
-        rate = getattr(info, "change_rate", 0.0)
-        
-        result.append({
-            "name": info.name,
-            "symbol": info.symbol,
-            "price": info.current_price,
-            "badge": info.badge,
-            
-            # 프론트엔드로 보낼 등락률 데이터
-            "change_rate": rate, 
-            "change_text": f"{rate}%"
-        })
-    return result

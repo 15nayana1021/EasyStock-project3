@@ -10,6 +10,9 @@ import {
   ShieldCheck,
   LogOut,
   Settings2,
+  Type,
+  ScrollText,
+  Shield,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 // 1번 파일에서 사용하던 이미지와 상수를 그대로 가져옵니다.
@@ -32,6 +35,8 @@ const SettingsContent: React.FC<SettingsContentProps> = ({
   const [pushEnabled, setPushEnabled] = useState(true);
   const [eduEnabled, setEduEnabled] = useState(true);
   const [marketEnabled, setMarketEnabled] = useState(true);
+  const [dualLoginEnabled, setDualLoginEnabled] = useState(false);
+  const [autoPasswordEnabled, setAutoPasswordEnabled] = useState(false);
 
   // 1번 파일 기능: 로그아웃
   const handleLogout = () => {
@@ -81,9 +86,12 @@ const SettingsContent: React.FC<SettingsContentProps> = ({
         <div className="bg-[#004FFE] rounded-[2.5rem] p-6 shadow-lg shadow-[#004FFE]/20 flex items-center justify-between cursor-pointer active:scale-[0.98] transition-all border border-white/10">
           <div className="flex items-center space-x-4">
             <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center p-0.5 overflow-hidden border-2 border-white/30">
-              {/* 1번 파일에서 사용하던 이미지 사용 */}
               <img
-                src={profileSquirrel}
+                src={
+                  userLevel === "Lv.5" || userLevel === "Lv.6"
+                    ? "/lv5.png"
+                    : profileSquirrel
+                }
                 alt="User Avatar"
                 className="w-[90%] h-[90%] object-contain"
               />
@@ -160,12 +168,43 @@ const SettingsContent: React.FC<SettingsContentProps> = ({
         </div>
 
         {/* 메뉴 리스트 (2번 디자인) */}
+        <div className="bg-white rounded-[2.5rem] p-7 shadow-sm space-y-7">
+          <div className="flex items-center space-x-2 pb-1">
+            <Shield size={20} className="text-[#004FFE]" strokeWidth={3} />
+            <span className="text-[17px] font-black text-[#1A334E] tracking-tight">
+              보안
+            </span>
+          </div>
+
+          <ToggleItem
+            label="이중접속 허용"
+            subLabel="여러 기기의 동시 접속 허용"
+            enabled={dualLoginEnabled}
+            onClick={() => setDualLoginEnabled(!dualLoginEnabled)}
+          />
+          <div className="h-[1px] w-full bg-gray-50 opacity-50"></div>
+          <ToggleItem
+            label="계좌비밀번호 자동입력"
+            subLabel="주식/장내채권 주문 시 계좌비밀번호 미사용"
+            enabled={autoPasswordEnabled}
+            onClick={() => setAutoPasswordEnabled(!autoPasswordEnabled)}
+          />
+        </div>
+
+        {/* App Info Group */}
         <div className="bg-white rounded-[2.5rem] p-7 py-5 shadow-sm space-y-2 overflow-hidden">
-          <MenuListItem icon={<Info size={20} />} label="앱 정보 & 고객 지원" />
-          <div className="h-[1px] w-full bg-gray-50 my-1"></div>
           <MenuListItem icon={<User size={20} />} label="내 정보" />
           <div className="h-[1px] w-full bg-gray-50 my-1"></div>
+          <MenuListItem
+            icon={<ShieldCheck size={20} />}
+            label="약관 및 개인정보 처리방침"
+          />
+          <div className="h-[1px] w-full bg-gray-50 my-1"></div>
+          <MenuListItem icon={<Type size={20} />} label="글씨 크기 및 글꼴" />
+          <div className="h-[1px] w-full bg-gray-50 my-1"></div>
           <MenuListItem icon={<Megaphone size={20} />} label="공지사항" />
+          <div className="h-[1px] w-full bg-gray-50 my-1"></div>
+          <MenuListItem icon={<Info size={20} />} label="앱 정보 & 고객 지원" />
           <div className="h-[1px] w-full bg-gray-50 my-1"></div>
           <MenuListItem
             icon={<HelpCircle size={20} />}
@@ -173,13 +212,14 @@ const SettingsContent: React.FC<SettingsContentProps> = ({
           />
           <div className="h-[1px] w-full bg-gray-50 my-1"></div>
           <MenuListItem
-            icon={<ShieldCheck size={20} />}
-            label="약관 및 개인정보 처리방침"
+            icon={<ScrollText size={20} />}
+            label="오픈소스 라이선스"
+            sublabel="제3자 소프트웨어에 대한 저작권과 라이선스를 고지합니다"
           />
 
           <div className="h-[1px] w-full bg-gray-50 my-1"></div>
 
-          {/* 로그아웃 버튼 추가 */}
+          {/* 로그아웃 버튼 복구 */}
           <div
             onClick={handleLogout}
             className="flex items-center justify-between py-4 cursor-pointer group"
@@ -197,7 +237,7 @@ const SettingsContent: React.FC<SettingsContentProps> = ({
 
           <div className="h-[1px] w-full bg-gray-50 my-1"></div>
 
-          {/* 게임 초기화 (1번 파일 로직) */}
+          {/* 완벽한 데이터 초기화(handleReset) 복구 */}
           <div
             onClick={handleReset}
             className="flex items-center justify-between py-4 cursor-pointer group"
@@ -221,8 +261,7 @@ const SettingsContent: React.FC<SettingsContentProps> = ({
   );
 };
 
-// 서브 컴포넌트들
-
+// 서브 컴포넌트 1
 const ToggleItem: React.FC<{
   label: string;
   subLabel: string;
@@ -251,22 +290,31 @@ const ToggleItem: React.FC<{
   </div>
 );
 
-const MenuListItem: React.FC<{ icon: React.ReactNode; label: string }> = ({
-  icon,
-  label,
-}) => (
+// 서브 컴포넌트 2
+const MenuListItem: React.FC<{
+  icon: React.ReactNode;
+  label: string;
+  sublabel?: string;
+}> = ({ icon, label, sublabel }) => (
   <div className="flex items-center justify-between py-4 cursor-pointer group">
-    <div className="flex items-center space-x-4">
-      <div className="text-gray-300 group-hover:text-[#004FFE] transition-colors">
+    <div className="flex items-center space-x-4 flex-1">
+      <div className="text-gray-300 group-hover:text-[#004FFE] transition-colors shrink-0">
         {icon}
       </div>
-      <span className="text-[15px] font-black text-[#1A334E] tracking-tight">
-        {label}
-      </span>
+      <div className="flex flex-col min-w-0">
+        <span className="text-[15px] font-black text-[#1A334E] tracking-tight">
+          {label}
+        </span>
+        {sublabel && (
+          <span className="text-[11px] text-gray-400 font-bold mt-0.5 leading-tight">
+            {sublabel}
+          </span>
+        )}
+      </div>
     </div>
     <ChevronRight
       size={20}
-      className="text-gray-300 group-hover:text-gray-500 transition-colors"
+      className="text-gray-300 group-hover:text-gray-500 transition-colors shrink-0"
     />
   </div>
 );

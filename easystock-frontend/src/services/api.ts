@@ -157,22 +157,30 @@ export const fetchCompanies = async (): Promise<StockData[]> => {
   }
 };
 
-export const fetchNewsList = async (company?: string): Promise<NewsItem[]> => {
+export const fetchNews = async (): Promise<News[]> => {
   try {
-    const url = company
-      ? `${BASE_URL}/api/news?company=${encodeURIComponent(company)}`
-      : `${BASE_URL}/api/news`;
-
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`뉴스 API 응답 에러: ${response.status}`);
+    const response = await fetch(`${BASE_URL}/api/news`);
+    if (!response.ok) throw new Error("Network response was not ok");
     return await response.json();
   } catch (error) {
-    console.error("뉴스 로딩 실패:", error);
+    console.error("Failed to fetch all news:", error);
     return [];
   }
 };
 
-export const fetchNews = fetchNewsList;
+export const fetchCompanyNews = async (
+  companyName: string,
+): Promise<NewsItem[]> => {
+  try {
+    const encodedName = encodeURIComponent(companyName);
+    const response = await fetch(`${BASE_URL}/api/news/${encodedName}`);
+    if (!response.ok) throw new Error("Network response was not ok");
+    return await response.json();
+  } catch (error) {
+    console.error("Failed to fetch company news:", error);
+    return [];
+  }
+};
 
 export const fetchMyPortfolio = async (userId: string = "1") => {
   try {
@@ -399,19 +407,6 @@ export const fetchTeamCompanies = async (): Promise<CompanyData[]> => {
 export const fetchChartData = async (ticker: string): Promise<ChartData[]> => {
   try {
     const response = await fetch(`${BASE_URL}/api/chart/${ticker}?limit=3000`);
-    if (!response.ok) throw new Error("Network response was not ok");
-    return await response.json();
-  } catch (error) {
-    return [];
-  }
-};
-
-export const fetchCompanyNews = async (
-  companyName: string,
-): Promise<NewsItem[]> => {
-  try {
-    const encodedName = encodeURIComponent(companyName);
-    const response = await fetch(`${BASE_URL}/api/news/${encodedName}`);
     if (!response.ok) throw new Error("Network response was not ok");
     return await response.json();
   } catch (error) {

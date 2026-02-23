@@ -310,7 +310,7 @@ async def get_my_portfolio(user_id: str = "1"):
                 avg_price = row["average_price"]
                 
                 # 현재가는 엔진에서 가져옴
-                current_price = engine.companies[ticker].current_price if ticker in engine.companies else avg_price
+                current_price = engine.companies[ticker].current_price if hasattr(engine, 'companies') and ticker in engine.companies else avg_price
                 
                 profit_rate = ((current_price - avg_price) / avg_price) * 100 if avg_price > 0 else 0
                 
