@@ -1,6 +1,7 @@
 import { StockData } from "../types";
 
-const BASE_URL = "http://localhost:8000";
+const BASE_URL =
+  "https://8ai-final-team4-appservice-ecf5gegpfkb3cscv.koreacentral-01.azurewebsites.net";
 
 // 1. 데이터 타입 정의
 
